@@ -525,7 +525,7 @@ function renderIndex(el){
   const pct=200000>0?Math.min((P.idxT.inv/200000)*100,150):0;
   el.innerHTML=`<div class="section">
     <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:12px;margin-bottom:14px">
-      <div class="card"><div class="lbl" style="margin-bottom:8px">지수형 종목 수익률 추이 (%)</div><canvas id="chIdxTrend" height="220"></canvas></div>
+      <div class="card"><div class="lbl" style="margin-bottom:8px">지수형 종목 수익률 추이 (%)</div><canvas id="chIdxTrend" height="165"></canvas></div>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div class="card" style="flex:1"><div class="topline" style="background:linear-gradient(90deg,var(--blue),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.idxT.val))}</div>
@@ -548,7 +548,7 @@ function renderDividend(el){
   const pct=300000>0?Math.min((P.divT.inv/300000)*100,150):0;
   el.innerHTML=`<div class="section">
     <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:12px;margin-bottom:14px">
-      <div class="card"><div class="lbl" style="margin-bottom:8px">배당 종목 수익률 추이 (%)</div><canvas id="chDivTrend" height="220"></canvas></div>
+      <div class="card"><div class="lbl" style="margin-bottom:8px">배당 종목 수익률 추이 (%)</div><canvas id="chDivTrend" height="165"></canvas></div>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div class="card" style="flex:1"><div class="topline" style="background:linear-gradient(90deg,var(--green),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.divT.val))}</div>
@@ -571,7 +571,7 @@ function renderGrowth(el){
   const pct=50000>0?Math.min((P.groT.inv/50000)*100,150):0;
   el.innerHTML=`<div class="section">
     <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:12px;margin-bottom:14px">
-      <div class="card"><div class="lbl" style="margin-bottom:8px">성장 종목 수익률 추이 (%)</div><canvas id="chGroTrend" height="220"></canvas></div>
+      <div class="card"><div class="lbl" style="margin-bottom:8px">성장 종목 수익률 추이 (%)</div><canvas id="chGroTrend" height="165"></canvas></div>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div class="card" style="flex:1"><div class="topline" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.groT.val))}</div>
