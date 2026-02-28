@@ -410,7 +410,7 @@ function renderOverview(el){
   // KRW 트리맵 (일변동 색상)
   P._tmKRW=[];
   const krS=[...P.kr].sort((a,b)=>b.val-a.val);
-  krS.forEach(h=>P._tmKRW.push({label:h.name,ticker:h.ticker,value:h.val,cat:"국내",daily:h.daily,plp:h.plp,color:dailyColor(h.daily)}));
+  krS.forEach(h=>P._tmKRW.push({label:h.name,ticker:h.name,value:h.val,cat:"국내",daily:h.daily,plp:h.plp,color:dailyColor(h.daily)}));
   renderTreemap("tmKRW",P._tmKRW,fK);
 
   // 범례 (일변동 기준)
@@ -445,10 +445,10 @@ function mkTable(items,isKR){
       const sigC=v=>v>=70?"var(--green)":v<=30?"var(--red)":"var(--txt)";
       return`<tr>
         <td style="text-align:left"><div style="font-weight:800;font-size:13px;color:var(--txt)">${h.name}</div><div style="font-size:10px;color:var(--sub)">${h.ticker} · ${isKR?h.qty:h.qty%1?h.qty.toFixed(2):h.qty}주</div></td>
-        <td class="mono">${cur}</td>
+        <td class="mono"><div>${cur}</div><div style="font-size:10px;color:var(--mute)">${isKR?h.avg.toLocaleString():fUd(h.avg)}</div></td>
         <td><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
-        <td><div style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
-        <td style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</td>
+        <td style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
+        <td><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
         <td><span style="color:${h.divY>=3?"var(--green)":h.divY>=1?"var(--amber)":"var(--sub)"};font-weight:700;font-size:12px">${h.divY.toFixed(2)}%</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb20)};font-weight:700;font-size:12px">${h.bb20||"-"}</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb252)};font-weight:700;font-size:12px">${h.bb252||"-"}</span></td>
@@ -633,7 +633,7 @@ function renderRisk(el){
 
   // ── 리스크 통합 차트: RSI, BB20, BB252 (좌축 0~100) + MDD (우축 음수%) ──
   const riskData=allAll.filter(h=>h.rsi>0||h.bb20||h.bb252||h.mdd!==0).sort((a,b)=>b.val-a.val);
-  const rLabels=riskData.map(h=>h.ticker||h.name.slice(0,8));
+  const rLabels=riskData.map(h=>h.ticker&&!h.ticker.startsWith("KRX:")?h.ticker:h.name.slice(0,8));
   charts.risk=new Chart(document.getElementById("chRisk"),{
     type:"bar",
     data:{
