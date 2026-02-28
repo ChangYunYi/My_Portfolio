@@ -39,6 +39,10 @@
   .lbl{font-size:12px;color:var(--sub);font-weight:700;margin-bottom:6px;letter-spacing:0.4px;text-transform:uppercase}
   .big{font-size:28px;font-weight:900;color:var(--txt)}
   .mid{font-size:14px;font-weight:700}
+  .side-cards .card{padding:10px 14px}
+  .side-cards .lbl{font-size:10px;margin-bottom:2px}
+  .side-cards .big{font-size:20px}
+  .side-cards .mid{font-size:12px}
   .grid-4{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:16px}
   .grid-2e{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
@@ -73,7 +77,7 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
   @media(max-width:768px){.grid-2e,.grid-3{grid-template-columns:1fr}.header{padding:10px 14px}.wrap{padding:10px 12px 40px}
-    [style*="grid-template-columns: 1.8fr"]{grid-template-columns:1fr!important}
+    [style*="grid-template-columns: 1.8fr"]{grid-template-columns:1fr!important;height:auto!important}
     #tmGrid{grid-template-columns:1fr!important}
     #topGrid{grid-template-columns:1fr!important}}
 </style>
@@ -465,7 +469,7 @@ function mkProgress(inv,target,color){
       <span style="color:var(--txt2)">${fU(Math.round(inv))}</span>
       <span style="font-weight:800;color:${pct>=100?"var(--green)":"var(--txt2)"}">${pct.toFixed(0)}%</span></div>
     <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct,100)}%;background:${pct>=100?"var(--green)":color}"></div></div>
-    <div style="font-size:10px;color:var(--mute);margin-top:3px;text-align:right">목표 ${fU(target)}</div>`;
+    <div style="font-size:9px;color:var(--mute);margin-top:2px;text-align:right">목표 ${fU(target)}</div>`;
 }
 function portHead(total,color,target){
   const plp=total.inv>0?((total.val-total.inv)/total.inv*100):0;
@@ -504,7 +508,7 @@ function mkPriceTrendChart(canvasId, tickerList) {
     type: "line",
     data: { labels, datasets },
     options: {
-      responsive: true,
+      responsive: true, maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       scales: {
         x: { ticks: { color: "#5e82a8", font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: "#1f3a6220" } },
@@ -524,18 +528,18 @@ function renderIndex(el){
   const plp=P.idxT.inv>0?((P.idxT.val-P.idxT.inv)/P.idxT.inv*100):0;
   const pct=200000>0?Math.min((P.idxT.inv/200000)*100,150):0;
   el.innerHTML=`<div class="section">
-    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:12px;margin-bottom:14px">
-      <div class="card"><div class="lbl" style="margin-bottom:8px">지수형 종목 수익률 추이 (%)</div><canvas id="chIdxTrend" height="165"></canvas></div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="card" style="flex:1"><div class="topline" style="background:linear-gradient(90deg,var(--blue),transparent)"></div>
+    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(180px,22vw,260px)">
+      <div class="card" style="overflow:hidden;display:flex;flex-direction:column;padding:12px 14px"><div class="lbl" style="margin-bottom:6px">지수형 종목 수익률 추이 (%)</div><div style="flex:1;min-height:0"><canvas id="chIdxTrend"></canvas></div></div>
+      <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--blue),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.idxT.val))}</div>
           <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
-        <div class="card" style="flex:1"><div class="lbl">목표 진행률 (투자금)</div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px"><span style="color:var(--txt2)">${fU(Math.round(P.idxT.inv))}</span><span style="font-weight:800;color:${pct>=100?"var(--green)":"var(--txt2)"}">${pct.toFixed(0)}%</span></div>
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">목표 진행률 (투자금)</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:var(--txt2)">${fU(Math.round(P.idxT.inv))}</span><span style="font-weight:800;color:${pct>=100?"var(--green)":"var(--txt2)"}">${pct.toFixed(0)}%</span></div>
           <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct,100)}%;background:${pct>=100?"var(--green)":"var(--blue)"}"></div></div>
-          <div style="font-size:10px;color:var(--mute);margin-top:3px;text-align:right">목표 ${fU(200000)}</div></div>
-        <div class="card" style="flex:1"><div class="lbl">연간 배당</div><div class="big" style="color:var(--green)">${fU(Math.round(divI))}</div>
-          <div style="font-size:11px;color:var(--sub);margin-top:2px">월 ${fU(Math.round(divI/12))}</div></div>
+          <div style="font-size:9px;color:var(--mute);margin-top:2px;text-align:right">목표 ${fU(200000)}</div></div>
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">연간 배당</div><div class="big" style="color:var(--green)">${fU(Math.round(divI))}</div>
+          <div style="font-size:10px;color:var(--sub);margin-top:1px">월 ${fU(Math.round(divI/12))}</div></div>
       </div>
     </div>
     <div class="card">${mkTable(P.index,false)}</div></div>`;
@@ -547,18 +551,18 @@ function renderDividend(el){
   const plp=P.divT.inv>0?((P.divT.val-P.divT.inv)/P.divT.inv*100):0;
   const pct=300000>0?Math.min((P.divT.inv/300000)*100,150):0;
   el.innerHTML=`<div class="section">
-    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:12px;margin-bottom:14px">
-      <div class="card"><div class="lbl" style="margin-bottom:8px">배당 종목 수익률 추이 (%)</div><canvas id="chDivTrend" height="165"></canvas></div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="card" style="flex:1"><div class="topline" style="background:linear-gradient(90deg,var(--green),transparent)"></div>
+    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(180px,22vw,260px)">
+      <div class="card" style="overflow:hidden;display:flex;flex-direction:column;padding:12px 14px"><div class="lbl" style="margin-bottom:6px">배당 종목 수익률 추이 (%)</div><div style="flex:1;min-height:0"><canvas id="chDivTrend"></canvas></div></div>
+      <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--green),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.divT.val))}</div>
           <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
-        <div class="card" style="flex:1"><div class="lbl">목표 진행률 (투자금)</div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px"><span style="color:var(--txt2)">${fU(Math.round(P.divT.inv))}</span><span style="font-weight:800;color:${pct>=100?"var(--green)":"var(--txt2)"}">${pct.toFixed(0)}%</span></div>
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">목표 진행률 (투자금)</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:var(--txt2)">${fU(Math.round(P.divT.inv))}</span><span style="font-weight:800;color:${pct>=100?"var(--green)":"var(--txt2)"}">${pct.toFixed(0)}%</span></div>
           <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct,100)}%;background:${pct>=100?"var(--green)":"var(--green)"}"></div></div>
-          <div style="font-size:10px;color:var(--mute);margin-top:3px;text-align:right">목표 ${fU(300000)}</div></div>
-        <div class="card" style="flex:1"><div class="lbl">연간 배당 수익</div><div class="big" style="color:var(--green)">${fU(Math.round(divI))}</div>
-          <div style="font-size:11px;color:var(--sub);margin-top:2px">월 ${fU(Math.round(divI/12))}</div></div>
+          <div style="font-size:9px;color:var(--mute);margin-top:2px;text-align:right">목표 ${fU(300000)}</div></div>
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">연간 배당 수익</div><div class="big" style="color:var(--green)">${fU(Math.round(divI))}</div>
+          <div style="font-size:10px;color:var(--sub);margin-top:1px">월 ${fU(Math.round(divI/12))}</div></div>
       </div>
     </div>
     <div class="card">${mkTable(P.dividend,false)}</div></div>`;
@@ -570,17 +574,17 @@ function renderGrowth(el){
   const plp=P.groT.inv>0?((P.groT.val-P.groT.inv)/P.groT.inv*100):0;
   const pct=50000>0?Math.min((P.groT.inv/50000)*100,150):0;
   el.innerHTML=`<div class="section">
-    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:12px;margin-bottom:14px">
-      <div class="card"><div class="lbl" style="margin-bottom:8px">성장 종목 수익률 추이 (%)</div><canvas id="chGroTrend" height="165"></canvas></div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="card" style="flex:1"><div class="topline" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
+    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(180px,22vw,260px)">
+      <div class="card" style="overflow:hidden;display:flex;flex-direction:column;padding:12px 14px"><div class="lbl" style="margin-bottom:6px">성장 종목 수익률 추이 (%)</div><div style="flex:1;min-height:0"><canvas id="chGroTrend"></canvas></div></div>
+      <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.groT.val))}</div>
           <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
-        <div class="card" style="flex:1"><div class="lbl">목표 진행률 (투자금)</div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px"><span style="color:var(--txt2)">${fU(Math.round(P.groT.inv))}</span><span style="font-weight:800;color:${pct>=100?"var(--green)":"var(--txt2)"}">${pct.toFixed(0)}%</span></div>
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">목표 진행률 (투자금)</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:var(--txt2)">${fU(Math.round(P.groT.inv))}</span><span style="font-weight:800;color:${pct>=100?"var(--green)":"var(--txt2)"}">${pct.toFixed(0)}%</span></div>
           <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct,100)}%;background:${pct>=100?"var(--green)":"var(--purple)"}"></div></div>
-          <div style="font-size:10px;color:var(--mute);margin-top:3px;text-align:right">목표 ${fU(50000)}</div></div>
-        <div class="card" style="flex:1"><div class="lbl">최고 수익</div>${best?`<div style="font-size:20px;font-weight:900;color:var(--green)">${best.name}</div><div style="font-size:14px;color:var(--green);font-weight:800">${fP(best.plp)}</div>`:""}</div>
+          <div style="font-size:9px;color:var(--mute);margin-top:2px;text-align:right">목표 ${fU(50000)}</div></div>
+        <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">최고 수익</div>${best?`<div style="font-size:20px;font-weight:900;color:var(--green)">${best.name}</div><div style="font-size:14px;color:var(--green);font-weight:800">${fP(best.plp)}</div>`:""}</div>
       </div>
     </div>
     <div class="card">${mkTable(P.growth,false)}</div></div>`;
