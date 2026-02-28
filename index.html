@@ -528,7 +528,7 @@ function renderIndex(el){
   const plp=P.idxT.inv>0?((P.idxT.val-P.idxT.inv)/P.idxT.inv*100):0;
   const pct=200000>0?Math.min((P.idxT.inv/200000)*100,150):0;
   el.innerHTML=`<div class="section">
-    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(180px,22vw,260px)">
+    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(220px,25vw,300px)">
       <div class="card" style="overflow:hidden;display:flex;flex-direction:column;padding:12px 14px"><div class="lbl" style="margin-bottom:6px">지수형 종목 수익률 추이 (%)</div><div style="flex:1;min-height:0"><canvas id="chIdxTrend"></canvas></div></div>
       <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--blue),transparent)"></div>
@@ -551,7 +551,7 @@ function renderDividend(el){
   const plp=P.divT.inv>0?((P.divT.val-P.divT.inv)/P.divT.inv*100):0;
   const pct=300000>0?Math.min((P.divT.inv/300000)*100,150):0;
   el.innerHTML=`<div class="section">
-    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(180px,22vw,260px)">
+    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(220px,25vw,300px)">
       <div class="card" style="overflow:hidden;display:flex;flex-direction:column;padding:12px 14px"><div class="lbl" style="margin-bottom:6px">배당 종목 수익률 추이 (%)</div><div style="flex:1;min-height:0"><canvas id="chDivTrend"></canvas></div></div>
       <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--green),transparent)"></div>
@@ -574,7 +574,7 @@ function renderGrowth(el){
   const plp=P.groT.inv>0?((P.groT.val-P.groT.inv)/P.groT.inv*100):0;
   const pct=50000>0?Math.min((P.groT.inv/50000)*100,150):0;
   el.innerHTML=`<div class="section">
-    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(180px,22vw,260px)">
+    <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:10px;margin-bottom:14px;height:clamp(220px,25vw,300px)">
       <div class="card" style="overflow:hidden;display:flex;flex-direction:column;padding:12px 14px"><div class="lbl" style="margin-bottom:6px">성장 종목 수익률 추이 (%)</div><div style="flex:1;min-height:0"><canvas id="chGroTrend"></canvas></div></div>
       <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
