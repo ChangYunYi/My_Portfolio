@@ -615,8 +615,7 @@ function renderRisk(el){
   ];
 
   el.innerHTML=`<div class="section">
-    <div class="card" style="margin-bottom:14px"><div class="lbl" style="margin-bottom:10px">RSI 현황</div><canvas id="chRsi" height="130"></canvas></div>
-    <div class="card" style="margin-bottom:14px"><div class="lbl" style="margin-bottom:8px">MDD 비교</div><canvas id="chMdd" height="${Math.max(160,allAll.filter(h=>h.mdd!==0).length*22)}"></canvas></div>
+    <div class="card" style="margin-bottom:14px"><div class="lbl" style="margin-bottom:10px">리스크 지표 (RSI · BB20 · BB252 · MDD)</div><canvas id="chRisk" height="${Math.max(120,allAll.filter(h=>h.rsi>0).length*7)}"></canvas></div>
     <div class="grid-2e">
       <div class="card"><div class="lbl" style="margin-bottom:10px">배당수익률 Top 10</div>
         ${divTop.map((h,i)=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(31,58,98,0.2)">
@@ -632,23 +631,37 @@ function renderRisk(el){
     </div>
   </div>`;
 
-  const rsiData=allUSD.filter(h=>h.rsi>0);
-  charts.rsi=new Chart(document.getElementById("chRsi"),{
+  // ── 리스크 통합 차트: RSI, BB20, BB252 (좌축 0~100) + MDD (우축 음수%) ──
+  const riskData=allAll.filter(h=>h.rsi>0||h.bb20||h.bb252||h.mdd!==0).sort((a,b)=>b.val-a.val);
+  const rLabels=riskData.map(h=>h.ticker||h.name.slice(0,8));
+  charts.risk=new Chart(document.getElementById("chRisk"),{
     type:"bar",
-    data:{labels:rsiData.map(h=>h.ticker),datasets:[{data:rsiData.map(h=>h.rsi),
-      backgroundColor:rsiData.map(h=>h.rsi>=70?"#ff6b78aa":h.rsi>=60?"#ffc05caa":h.rsi>=40?"#2ee0a8aa":"#4d9affaa"),
-      borderRadius:6,maxBarThickness:40}]},
-    options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>"RSI: "+ctx.raw.toFixed(1)}}},
-      scales:{x:{ticks:{color:"#9db5d4",font:{size:10,weight:"bold"}},grid:{display:false}},y:{min:0,max:100,ticks:{color:"#5e82a8",font:{size:10}},grid:{color:"#1f3a6220"}}}}
-  });
-
-  const mddD=allAll.filter(h=>h.mdd!==0).sort((a,b)=>a.mdd-b.mdd);
-  charts.mdd=new Chart(document.getElementById("chMdd"),{
-    type:"bar",
-    data:{labels:mddD.map(h=>h.name.length>14?h.name.slice(0,14)+"..":h.name),
-      datasets:[{data:mddD.map(h=>h.mdd),backgroundColor:mddD.map(h=>Math.abs(h.mdd)>=10?"#ff6b78aa":Math.abs(h.mdd)>=5?"#ffc05caa":"#2ee0a8aa"),borderRadius:4,maxBarThickness:16}]},
-    options:{responsive:true,indexAxis:"y",plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`MDD ${ctx.raw.toFixed(2)}%`}}},
-      scales:{x:{ticks:{color:"#5e82a8",font:{size:10},callback:v=>v+"%"},grid:{color:"#1f3a6220"}},y:{ticks:{color:"#9db5d4",font:{size:10}},grid:{display:false}}}}
+    data:{
+      labels:rLabels,
+      datasets:[
+        {label:"RSI",data:riskData.map(h=>h.rsi||null),backgroundColor:"#4d9affbb",borderRadius:4,maxBarThickness:18,yAxisID:"yL",order:2},
+        {label:"BB(20)",data:riskData.map(h=>h.bb20||null),backgroundColor:"#2ee0a8bb",borderRadius:4,maxBarThickness:18,yAxisID:"yL",order:2},
+        {label:"BB(252)",data:riskData.map(h=>h.bb252||null),backgroundColor:"#ae82ffbb",borderRadius:4,maxBarThickness:18,yAxisID:"yL",order:2},
+        {label:"MDD",data:riskData.map(h=>h.mdd||null),type:"line",borderColor:"#ff6b78",backgroundColor:"#ff6b7830",pointBackgroundColor:riskData.map(h=>Math.abs(h.mdd)>=10?"#ff6b78":Math.abs(h.mdd)>=5?"#ffc05c":"#2ee0a8"),pointRadius:5,pointHoverRadius:7,borderWidth:2,tension:0.3,fill:true,yAxisID:"yR",order:1}
+      ]
+    },
+    options:{
+      responsive:true,
+      interaction:{mode:"index",intersect:false},
+      plugins:{
+        legend:{labels:{color:"#f2f6ff",font:{size:11,weight:"bold"},usePointStyle:true,pointStyle:"circle",padding:14}},
+        tooltip:{callbacks:{label:ctx=>{
+          const v=ctx.raw;if(v==null)return null;
+          return`${ctx.dataset.label}: ${ctx.dataset.label==="MDD"?v.toFixed(2)+"%":v.toFixed(0)}`;
+        }}}
+      },
+      scales:{
+        x:{ticks:{color:"#9db5d4",font:{size:10,weight:"bold"},maxRotation:45},grid:{display:false}},
+        yL:{position:"left",min:0,max:120,title:{display:true,text:"RSI / BB",color:"#5e82a8",font:{size:10}},ticks:{color:"#5e82a8",font:{size:10},stepSize:20},grid:{color:"#1f3a6218"},
+          afterDataLimits:s=>{s.max=120}},
+        yR:{position:"right",title:{display:true,text:"MDD %",color:"#ff6b78",font:{size:10}},ticks:{color:"#ff6b78",font:{size:10},callback:v=>v.toFixed(0)+"%"},grid:{display:false}}
+      }
+    }
   });
 }
 
