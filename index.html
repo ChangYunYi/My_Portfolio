@@ -47,6 +47,7 @@
   .grid-2e{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
   .tbl-wrap{overflow-x:auto}
+  .tbl-wrap tr[style*="cursor"]:hover{background:var(--s2)}
   table{width:100%;border-collapse:collapse;font-size:12px}
   th{padding:10px 6px;text-align:right;color:var(--sub);font-weight:700;font-size:11px;white-space:nowrap;border-bottom:2px solid var(--bdr)}
   th:first-child{text-align:left}
@@ -315,6 +316,61 @@ function _worstR(row,rowArea,short){
   for(const n of row){const c=n.area/rL;const r=Math.max(rL/c,c/rL);if(r>w)w=r}
   return w;
 }
+// ═══ ETF/STOCK 판별 ═══
+const ETF_TICKERS=new Set(["QQQ","QQQM","SPYM","SPY","VOO","VGK","VTI","VEA","VWO","SCHD","TLT","DGRW","JEPI","JEPQ","IVV","AGG","BND","VNQ","XLF","XLK","XLE","DIA","IWM","EFA","EEM","GLD","SLV","ARKK","TQQQ","SQQQ","SOXX","SMH","HUMN"]);
+function isETF(ticker){
+  if(!ticker)return false;
+  if(ticker.startsWith("KRX:"))return true; // 한국 종목은 대부분 ETF (현재 포트폴리오 기준)
+  return ETF_TICKERS.has(ticker.toUpperCase());
+}
+
+// ═══ STOCK DETAIL (POPUP / MODAL) ═══
+const _isMobile=window.innerWidth<=768||/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+function openStock(ticker,market,name,stype){
+  const url="stock.html?ticker="+encodeURIComponent(ticker)+"&market="+market+"&name="+encodeURIComponent(name)+"&type="+(stype||"stock");
+  if(_isMobile){
+    // 모바일: 풀스크린 모달
+    let overlay=document.getElementById("stockModal");
+    if(!overlay){
+      overlay=document.createElement("div");overlay.id="stockModal";
+      overlay.style.cssText="position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column";
+      const bar=document.createElement("div");
+      bar.style.cssText="display:flex;align-items:center;padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--bdr);flex-shrink:0";
+      bar.innerHTML='<button onclick="closeStockModal(true)" style="background:none;border:1px solid var(--bdr);color:var(--txt);padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">← 돌아가기</button><span style="margin-left:12px;font-size:14px;font-weight:800;color:var(--txt)">'+name+'</span>';
+      const frame=document.createElement("iframe");frame.id="stockFrame";
+      frame.style.cssText="flex:1;border:none;width:100%";
+      overlay.appendChild(bar);overlay.appendChild(frame);
+      document.body.appendChild(overlay);
+    }
+    overlay.style.display="flex";
+    overlay.querySelector("span").textContent=name;
+    document.getElementById("stockFrame").src=url;
+    document.body.style.overflow="hidden";
+    history.pushState({modal:true},"");
+  }else{
+    // 데스크탑: 팝업
+    const w=820,h=700,left=(screen.width-w)/2,top=(screen.height-h)/2;
+    window.open(url,"stockDetail","width="+w+",height="+h+",left="+left+",top="+top+",scrollbars=yes,resizable=yes");
+  }
+}
+
+function closeStockModal(fromBtn){
+  const m=document.getElementById("stockModal");
+  if(m&&m.style.display==="flex"){
+    m.style.display="none";document.getElementById("stockFrame").src="";
+    document.body.style.overflow="";
+    if(fromBtn)history.back();
+  }
+}
+// Android 뒤로가기 버튼 지원
+window.addEventListener("popstate",function(){closeStockModal(false)});
+
+document.addEventListener("click",function(e){
+  var tr=e.target.closest("tr[data-ticker]");
+  if(tr)openStock(tr.dataset.ticker,tr.dataset.market,tr.dataset.name,tr.dataset.type);
+});
+
 function renderTreemap(cid,data,fmt){
   const box=document.getElementById(cid);if(!box)return;
   const W=box.offsetWidth,H=box.offsetHeight,total=data.reduce((s,d)=>s+d.value,0);
@@ -407,14 +463,14 @@ function renderOverview(el){
   P._tmUSD=[];
   [{arr:P.index,cat:"지수형"},{arr:P.dividend,cat:"배당"},{arr:P.growth,cat:"성장"}].forEach(g=>{
     const s=[...g.arr].sort((a,b)=>b.val-a.val);
-    s.forEach(h=>P._tmUSD.push({label:h.name,ticker:h.ticker,value:h.val,cat:g.cat,daily:h.daily,plp:h.plp,color:dailyColor(h.daily)}));
+    s.forEach(h=>P._tmUSD.push({label:h.name,ticker:h.ticker,origTicker:h.ticker,value:h.val,cat:g.cat,daily:h.daily,plp:h.plp,color:dailyColor(h.daily)}));
   });
   renderTreemap("tmUSD",P._tmUSD,fU);
 
   // KRW 트리맵 (일변동 색상)
   P._tmKRW=[];
   const krS=[...P.kr].sort((a,b)=>b.val-a.val);
-  krS.forEach(h=>P._tmKRW.push({label:h.name,ticker:h.name,value:h.val,cat:"국내",daily:h.daily,plp:h.plp,color:dailyColor(h.daily)}));
+  krS.forEach(h=>P._tmKRW.push({label:h.name,ticker:h.name,origTicker:h.ticker,value:h.val,cat:"국내",daily:h.daily,plp:h.plp,color:dailyColor(h.daily)}));
   renderTreemap("tmKRW",P._tmKRW,fK);
 
   // 범례 (일변동 기준)
@@ -447,7 +503,8 @@ function mkTable(items,isKR){
       const plS=isKR?(h.pl>=0?"+":"")+fK(h.pl):(h.pl>=0?"+":"")+fU(Math.round(h.pl));
       const mc=Math.abs(h.mdd)>=10?"var(--red)":Math.abs(h.mdd)>=5?"var(--amber)":"var(--green)";
       const sigC=v=>v>=70?"var(--green)":v<=30?"var(--red)":"var(--txt)";
-      return`<tr>
+      const st=isETF(h.ticker)?"etf":"stock";
+      return`<tr style="cursor:pointer" data-ticker="${h.ticker}" data-market="${isKR?"kr":"us"}" data-name="${h.name}" data-type="${st}">
         <td style="text-align:left"><div style="font-weight:800;font-size:13px;color:var(--txt)">${h.name}</div><div style="font-size:10px;color:var(--sub)">${h.ticker} · ${isKR?h.qty:h.qty%1?h.qty.toFixed(2):h.qty}주</div></td>
         <td class="mono"><div>${cur}</div><div style="font-size:10px;color:var(--mute)">${isKR?h.avg.toLocaleString():fUd(h.avg)}</div></td>
         <td><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
