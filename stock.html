@@ -138,7 +138,7 @@ function jsonp(sheetName){
       resolve({cols:cols,rows:rows});
     };
     var s=document.createElement("script");
-    s.src="https://docs.google.com/spreadsheets/d/"+SID+"/gviz/tq?tqx=out:json;responseHandler="+cb+"&sheet="+encodeURIComponent(sheetName);
+    s.src="https://docs.google.com/spreadsheets/d/"+SID+"/gviz/tq?tqx=out:json;responseHandler:"+cb+"&sheet="+encodeURIComponent(sheetName);
     s.onerror=function(){clearTimeout(timeout);delete window[cb];reject(new Error("load err"))};
     document.head.appendChild(s);
   });
@@ -168,10 +168,15 @@ document.querySelectorAll(".period-btn").forEach(function(b){b.addEventListener(
 async function loadMetrics(){
   try{
     var data=await jsonp("StockCache");
+    console.log("[CACHE] StockCache cols:", data.cols);
+    console.log("[CACHE] StockCache rows:", data.rows.length, "| looking for:", TICKER);
     var row=null;
-    for(var i=0;i<data.rows.length;i++){if(String(data.rows[i][0]||"").trim()===TICKER){row=data.rows[i];break}}
-    if(!row){console.warn("[CACHE] ticker not found:",TICKER);return}
-    console.log("[CACHE] StockCache:",TICKER,row);
+    for(var i=0;i<data.rows.length;i++){
+      var t=String(data.rows[i][0]||"").trim().toUpperCase();
+      if(t===TICKER.toUpperCase()){row=data.rows[i];break}
+    }
+    if(!row){console.warn("[CACHE] ticker NOT found:",TICKER,"| available:",data.rows.map(function(r){return r[0]}).join(","));return}
+    console.log("[CACHE] matched row:",JSON.stringify(row).substring(0,200));
     
     if(IS_ETF){
       sM("mER",row[11],function(v){return v+"%"});
@@ -192,7 +197,7 @@ async function loadMetrics(){
     
     var updated=row[14];
     if(updated){document.getElementById("tsUpdated").textContent="최종 갱신: "+new Date(updated).toLocaleString("ko-KR")}
-  }catch(e){console.error("[CACHE] metrics err:",e)}
+  }catch(e){console.error("[CACHE] metrics err:",e);document.getElementById("tsUpdated").textContent="❌ 메트릭 로딩 실패: "+e.message;document.getElementById("tsUpdated").style.color="var(--red)"}
 }
 
 // ═══ LOAD PRICES ═══
@@ -202,7 +207,7 @@ async function loadPrices(){
     _priceData=[];
     for(var i=0;i<data.rows.length;i++){
       var r=data.rows[i];
-      if(String(r[0]||"").trim()!==TICKER)continue;
+      if(String(r[0]||"").trim().toUpperCase()!==TICKER.toUpperCase())continue;
       var dt=r[1],cl=Number(r[2]);
       if(!dt||!cl||isNaN(cl))continue;
       var dateStr=(dt instanceof Date)?dt.toISOString().slice(0,10):String(dt).slice(0,10);
@@ -255,7 +260,7 @@ async function loadHoldings(){
     var holdings=[];
     for(var i=0;i<data.rows.length;i++){
       var r=data.rows[i];
-      if(String(r[0]||"").trim()===TICKER) holdings.push({rank:r[1],name:r[2]||"",ticker:r[3]||"",weight:Number(r[4])||0});
+      if(String(r[0]||"").trim().toUpperCase()===TICKER.toUpperCase()) holdings.push({rank:r[1],name:r[2]||"",ticker:r[3]||"",weight:Number(r[4])||0});
     }
     holdings.sort(function(a,b){return a.rank-b.rank});
     
@@ -285,7 +290,7 @@ async function loadFinancials(){
     
     for(var i=0;i<data.rows.length;i++){
       var r=data.rows[i];
-      if(String(r[0]||"").trim()!==TICKER)continue;
+      if(String(r[0]||"").trim().toUpperCase()!==TICKER.toUpperCase())continue;
       years.push(String(r[1]||""));revenue.push(Number(r[2])||0);opincome.push(Number(r[3])||0);
       netincome.push(Number(r[4])||0);eps.push(Number(r[5])||0);
       assets.push(Number(r[6])||0);debt.push(Number(r[7])||0);equity.push(Number(r[8])||0);
