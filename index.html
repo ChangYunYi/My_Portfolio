@@ -31,7 +31,7 @@
   .total-val{font-size:28px;font-weight:900;background:linear-gradient(135deg,#fff,var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
   .wrap{max-width:1480px;margin:0 auto;padding:14px 20px 60px}
   .tabs{display:flex;gap:2px;margin-bottom:16px;background:var(--s1);border-radius:11px;padding:3px;border:1px solid var(--bdr);overflow-x:auto}
-  .tabs button{flex:0 0 auto;padding:9px 16px;border-radius:9px;border:none;background:transparent;color:var(--mute);cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all 0.2s;white-space:nowrap}
+  .tabs button{flex:0 0 auto;padding:9px 16px;border-radius:9px;border:none;background:transparent;color:var(--mute);cursor:${isKR?"default":"pointer"};font-size:12px;font-weight:700;font-family:inherit;transition:all 0.2s;white-space:nowrap}
   .tabs button.active{background:var(--card);color:var(--txt);box-shadow:0 2px 12px rgba(0,0,0,0.4),inset 0 0 0 1px var(--bdr)}
   .tabs button:hover:not(.active){color:var(--sub)}
   .card{background:var(--card);border-radius:14px;padding:18px;border:1px solid var(--bdr);position:relative;overflow:hidden}
@@ -63,10 +63,10 @@
   .section{animation:fadeIn 0.4s ease-out}
   .loader{text-align:center;padding:60px;color:var(--sub);font-size:14px}
   .spin{display:inline-block;width:36px;height:36px;border:3px solid var(--bdr);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px}
-  .refresh-btn{background:var(--s1);border:1px solid var(--bdr);border-radius:8px;padding:7px 16px;color:var(--sub);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.15s}
+  .refresh-btn{background:var(--s1);border:1px solid var(--bdr);border-radius:8px;padding:7px 16px;color:var(--sub);font-size:11px;font-weight:700;cursor:${isKR?"default":"pointer"};font-family:inherit;transition:all 0.15s}
   .refresh-btn:hover{background:var(--s2);color:var(--txt)}
   .treemap-box{position:relative;width:100%;border-radius:10px;overflow:hidden}
-  .tm-cell{position:absolute;overflow:hidden;cursor:pointer;transition:filter 0.15s;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border:1px solid rgba(4,8,15,0.6)}
+  .tm-cell{position:absolute;overflow:hidden;cursor:${isKR?"default":"pointer"};transition:filter 0.15s;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border:1px solid rgba(4,8,15,0.6)}
   .tm-cell:hover{filter:brightness(1.25);z-index:2}
   .tm-name{font-weight:800;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.8);line-height:1.2}
   .tm-val{font-weight:600;color:rgba(255,255,255,0.85);text-shadow:0 1px 3px rgba(0,0,0,0.8);line-height:1.2}
@@ -337,7 +337,7 @@ function openStock(ticker,market,name,stype){
       overlay.style.cssText="position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column";
       const bar=document.createElement("div");
       bar.style.cssText="display:flex;align-items:center;padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--bdr);flex-shrink:0";
-      bar.innerHTML='<button onclick="closeStockModal(true)" style="background:none;border:1px solid var(--bdr);color:var(--txt);padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">← 돌아가기</button><span style="margin-left:12px;font-size:14px;font-weight:800;color:var(--txt)">'+name+'</span>';
+      bar.innerHTML='<button onclick="closeStockModal(true)" style="background:none;border:1px solid var(--bdr);color:var(--txt);padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:${isKR?"default":"pointer"}">← 돌아가기</button><span style="margin-left:12px;font-size:14px;font-weight:800;color:var(--txt)">'+name+'</span>';
       const frame=document.createElement("iframe");frame.id="stockFrame";
       frame.style.cssText="flex:1;border:none;width:100%";
       overlay.appendChild(bar);overlay.appendChild(frame);
@@ -368,7 +368,10 @@ window.addEventListener("popstate",function(){closeStockModal(false)});
 
 document.addEventListener("click",function(e){
   var tr=e.target.closest("tr[data-ticker]");
-  if(tr)openStock(tr.dataset.ticker,tr.dataset.market,tr.dataset.name,tr.dataset.type);
+  if(tr){
+    if(tr.dataset.market==="kr")return; // 국내 종목은 팝업 미지원
+    openStock(tr.dataset.ticker,tr.dataset.market,tr.dataset.name,tr.dataset.type);
+  }
 });
 
 function renderTreemap(cid,data,fmt){
@@ -504,7 +507,7 @@ function mkTable(items,isKR){
       const mc=Math.abs(h.mdd)>=10?"var(--red)":Math.abs(h.mdd)>=5?"var(--amber)":"var(--green)";
       const sigC=v=>v>=70?"var(--green)":v<=30?"var(--red)":"var(--txt)";
       const st=isETF(h.ticker)?"etf":"stock";
-      return`<tr style="cursor:pointer" data-ticker="${h.ticker}" data-market="${isKR?"kr":"us"}" data-name="${h.name}" data-type="${st}">
+      return`<tr style="cursor:${isKR?"default":"pointer"}" data-ticker="${h.ticker}" data-market="${isKR?"kr":"us"}" data-name="${h.name}" data-type="${st}">
         <td style="text-align:left"><div style="font-weight:800;font-size:13px;color:var(--txt)">${h.name}</div><div style="font-size:10px;color:var(--sub)">${h.ticker} · ${isKR?h.qty:h.qty%1?h.qty.toFixed(2):h.qty}주</div></td>
         <td class="mono"><div>${cur}</div><div style="font-size:10px;color:var(--mute)">${isKR?h.avg.toLocaleString():fUd(h.avg)}</div></td>
         <td><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
