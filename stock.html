@@ -122,6 +122,21 @@ function fB(v){var a=Math.abs(v);if(a>=1e12)return"$"+(v/1e12).toFixed(2)+"T";if
 function pc(v){return v>=0?"var(--green)":"var(--red)"}
 function sM(id,v,fmt){var el=document.getElementById(id);if(!el||v==null||v===""||v===0)return;el.textContent=fmt(Number(v));if(["mROE","mOPM","mDivY","mR1Y","mR3Y","mR5Y"].indexOf(id)>=0)el.style.color=pc(Number(v))}
 
+// Google Sheets JSONP 날짜 파싱: "Date(2022,0,3)" → "2022-01-03"
+function parseGDate(v){
+  if(!v) return "";
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  var s=String(v);
+  var m=s.match(/Date\((\d+),\s*(\d+),\s*(\d+)/);
+  if(m){
+    var yr=m[1], mo=String(Number(m[2])+1).padStart(2,"0"), dy=m[3].padStart(2,"0");
+    return yr+"-"+mo+"-"+dy;
+  }
+  // 이미 YYYY-MM-DD 형태
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  return s;
+}
+
 // ═══ JSONP ═══
 var _cbIdx=0;
 function jsonp(sheetName){
@@ -210,7 +225,8 @@ async function loadPrices(){
       if(String(r[0]||"").trim().toUpperCase()!==TICKER.toUpperCase())continue;
       var dt=r[1],cl=Number(r[2]);
       if(!dt||!cl||isNaN(cl))continue;
-      var dateStr=(dt instanceof Date)?dt.toISOString().slice(0,10):String(dt).slice(0,10);
+      var dateStr=parseGDate(dt);
+      if(!dateStr)continue;
       _priceData.push({date:dateStr,close:cl,open:Number(r[3])||cl,high:Number(r[4])||cl,low:Number(r[5])||cl});
     }
     _priceData.sort(function(a,b){return a.date>b.date?1:-1});
@@ -241,16 +257,24 @@ function renderChart(period){
   if(!_priceData.length)return;
   var now=new Date(),cut=new Date(now);
   if(period==="3m")cut.setMonth(now.getMonth()-3);else if(period==="6m")cut.setMonth(now.getMonth()-6);else if(period==="1y")cut.setFullYear(now.getFullYear()-1);else if(period==="3y")cut.setFullYear(now.getFullYear()-3);else cut.setFullYear(now.getFullYear()-5);
-  var f=_priceData.filter(function(d){return new Date(d.date)>=cut});if(!f.length)f=_priceData;
+  var cutStr=cut.toISOString().slice(0,10);
+  var f=_priceData.filter(function(d){return d.date>=cutStr});if(!f.length)f=_priceData;
   var ma=f.map(function(_,i){if(i<19)return null;var s=0;for(var j=i-19;j<=i;j++)s+=f[j].close;return s/20});
+  // X축 라벨 포맷: 3M/6M→MM.DD, 1Y→YY.MM, 3Y/5Y→YYYY.MM
+  var labels=f.map(function(d){
+    var p=d.date.split("-");
+    if(period==="3m"||period==="6m")return p[1]+"."+p[2];
+    if(period==="1y")return"'"+p[0].slice(2)+"."+p[1];
+    return p[0]+"."+p[1];
+  });
   if(charts.price)charts.price.destroy();
   charts.price=new Chart(document.getElementById("chPrice"),{type:"line",
-    data:{labels:f.map(function(d){return d.date}),datasets:[
+    data:{labels:labels,datasets:[
       {label:"종가",data:f.map(function(d){return d.close}),borderColor:"#4d9aff",backgroundColor:"rgba(77,154,255,0.06)",fill:true,tension:0.2,pointRadius:0,borderWidth:1.5},
       {label:"MA20",data:ma,borderColor:"#ffc05c",borderWidth:1,pointRadius:0,borderDash:[3,2],tension:0.3}]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
       scales:{x:{ticks:{color:"#5e82a8",font:{size:8},maxTicksLimit:7},grid:{color:"#1f3a6215"}},y:{ticks:{color:"#5e82a8",font:{size:9},callback:function(v){return"$"+v.toFixed(0)}},grid:{color:"#1f3a6215"}}},
-      plugins:{legend:{labels:{color:"#9db5d4",font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+": $"+ctx.raw?.toFixed(2)}}}}}});
+      plugins:{legend:{labels:{color:"#9db5d4",font:{size:10}}},tooltip:{callbacks:{title:function(ctx){return f[ctx[0].dataIndex].date},label:function(ctx){return ctx.dataset.label+": $"+ctx.raw?.toFixed(2)}}}}}});
 }
 
 // ═══ HOLDINGS ═══
