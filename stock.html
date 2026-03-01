@@ -19,18 +19,19 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
 .header .cur{font-size:18px;font-weight:900}
 .header .chg{font-size:12px;font-weight:700}
 .wrap{padding:10px 14px 20px}
-.card{background:var(--s1);border:1px solid var(--bdr);border-radius:10px;padding:10px 12px}
-.lbl{font-size:10px;color:var(--sub);font-weight:700;margin-bottom:4px;letter-spacing:0.3px;text-transform:uppercase}
-.section{margin-bottom:10px}
 .m-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
 .m-card{background:var(--s1);border:1px solid var(--bdr);border-radius:8px;padding:6px 8px;text-align:center}
 .m-card .k{font-size:9px;color:var(--sub);font-weight:700;text-transform:uppercase}
 .m-card .v{font-size:15px;font-weight:900;margin-top:1px}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:10px;padding:10px 12px}
+.lbl{font-size:10px;color:var(--sub);font-weight:700;margin-bottom:4px;letter-spacing:0.3px;text-transform:uppercase}
+.section{margin-bottom:10px}
 .tab-bar{display:flex;gap:3px;margin-bottom:10px}
 .tab-bar button{background:var(--s1);color:var(--sub);border:1px solid var(--bdr);padding:5px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;white-space:nowrap}
 .tab-bar button.active{background:var(--s2);color:var(--txt);border-color:var(--blue)}
 .period-btn{background:var(--s2);color:var(--sub);border:1px solid var(--bdr);padding:3px 10px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:700}
 .period-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 .fin-tbl{width:100%;border-collapse:collapse;font-size:11px}
 .fin-tbl th{text-align:right;color:var(--sub);font-weight:700;padding:4px 6px;border-bottom:1px solid var(--bdr);font-size:10px}
 .fin-tbl th:first-child{text-align:left}
@@ -40,7 +41,7 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
 .hold-row:last-child{border-bottom:none}
 .hold-rank{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:rgba(77,154,255,0.12);color:var(--blue);font-size:9px;font-weight:800;margin-right:8px;flex-shrink:0}
 .hold-name{flex:1;min-width:0}
-.hold-name .n{font-size:12px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hold-name .n{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hold-name .t{font-size:10px;color:var(--sub)}
 .hold-pct{font-size:13px;font-weight:800;color:var(--blue);margin-left:8px}
 .news-item{padding:8px 0;border-bottom:1px solid rgba(31,58,98,0.2)}
@@ -49,12 +50,9 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
 .news-item a:hover{color:var(--blue)}
 .news-item .meta{font-size:10px;color:var(--sub);margin-top:2px}
 .loading{text-align:center;padding:20px;color:var(--sub);font-size:12px}
-.loading::after{content:"";display:inline-block;width:14px;height:14px;border:2px solid var(--bdr);border-top:2px solid var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;margin-left:6px;vertical-align:middle}
+.loading::after{content:"";display:inline-block;width:14px;height:14px;border:2px solid var(--bdr);border-top:2px solid var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin-left:6px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
 .err{text-align:center;padding:16px;color:var(--red);font-size:11px}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.ext-links{display:flex;gap:8px;justify-content:center;padding:10px;flex-wrap:wrap}
-.ext-links a{display:inline-block;padding:6px 14px;background:rgba(77,154,255,0.1);border:1px solid var(--bdr);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;text-decoration:none}
 .ts{font-size:9px;color:var(--sub);text-align:right;padding:4px 0}
 </style>
 </head>
@@ -73,6 +71,8 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
   <div class="m-grid" id="metricsGrid"></div>
   <div class="ts" id="tsUpdated"></div>
   <div class="tab-bar" id="detailTabs"></div>
+
+  <!-- 차트 -->
   <div id="panelChart" class="section">
     <div class="card">
       <div style="display:flex;gap:4px;margin-bottom:8px">
@@ -85,13 +85,16 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
       <div style="height:280px"><canvas id="chPrice"></canvas></div>
     </div>
   </div>
+
+  <!-- 보유종목 (ETF) -->
   <div id="panelHoldings" class="section" style="display:none">
     <div class="grid-2">
       <div class="card"><div class="lbl">보유 비중 (Top 10)</div><div style="height:200px"><canvas id="chHoldings"></canvas></div></div>
       <div class="card"><div class="lbl">상위 보유종목</div><div id="holdingsList" style="max-height:200px;overflow-y:auto"><div class="loading">로딩중</div></div></div>
     </div>
-    <div id="holdingsLinks"></div>
   </div>
+
+  <!-- 재무 (Stock) -->
   <div id="panelFinancial" class="section" style="display:none">
     <div class="grid-2">
       <div class="card"><div class="lbl">매출 & 영업이익</div><div style="height:180px"><canvas id="chRevenue"></canvas></div></div>
@@ -99,24 +102,27 @@ body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSys
     </div>
     <div class="card"><div class="lbl" style="margin-bottom:6px">연간 재무제표</div><div style="overflow-x:auto" id="finTableWrap"><div class="loading">로딩중</div></div></div>
   </div>
+
+  <!-- 뉴스 -->
   <div id="panelNews" class="section" style="display:none">
     <div class="card"><div class="lbl" style="margin-bottom:6px">최신 뉴스</div><div id="newsList"><div class="loading">뉴스 로딩중</div></div></div>
   </div>
 </div>
+
 <script>
 // ═══ PARAMS ═══
 var P=new URLSearchParams(location.search);
-var TICKER=P.get("ticker")||"",MARKET=P.get("market")||"us",NAME=decodeURIComponent(P.get("name")||TICKER),STYPE=P.get("type")||"stock",IS_ETF=STYPE==="etf";
+var TICKER=P.get("ticker")||"",NAME=decodeURIComponent(P.get("name")||TICKER),STYPE=P.get("type")||"stock",IS_ETF=STYPE==="etf";
 var SID="1b9GtLud9TDFm4AvUnCEfDGu_4CTqYfRU8oYFAh2VSxc";
 var PROXY="https://api.allorigins.win/raw?url=";
 var charts={},_priceData=[];
 
 // ═══ UTILS ═══
-function fB(v){var a=Math.abs(v);if(MARKET==="kr"){if(a>=1e12)return(v/1e12).toFixed(1)+"조";if(a>=1e8)return(v/1e8).toFixed(0)+"억";if(a>=1e4)return Math.round(v/1e4)+"만";return v.toLocaleString()}if(a>=1e12)return"$"+(v/1e12).toFixed(2)+"T";if(a>=1e9)return"$"+(v/1e9).toFixed(1)+"B";if(a>=1e6)return"$"+(v/1e6).toFixed(0)+"M";return"$"+v.toLocaleString()}
+function fB(v){var a=Math.abs(v);if(a>=1e12)return"$"+(v/1e12).toFixed(2)+"T";if(a>=1e9)return"$"+(v/1e9).toFixed(1)+"B";if(a>=1e6)return"$"+(v/1e6).toFixed(0)+"M";return"$"+v.toLocaleString()}
 function pc(v){return v>=0?"var(--green)":"var(--red)"}
 function sM(id,v,fmt){var el=document.getElementById(id);if(!el||v==null||v===""||v===0)return;el.textContent=fmt(Number(v));if(["mROE","mOPM","mDivY","mR1Y","mR3Y","mR5Y"].indexOf(id)>=0)el.style.color=pc(Number(v))}
 
-// ═══ JSONP: 구글시트에서 데이터 읽기 ═══
+// ═══ JSONP ═══
 var _cbIdx=0;
 function jsonp(sheetName){
   return new Promise(function(resolve,reject){
@@ -137,18 +143,17 @@ function jsonp(sheetName){
     document.head.appendChild(s);
   });
 }
-function Vs(d,r,c){var row=d.rows[r];return row?String(row[c]||"").trim():"";}
-function Vn(d,r,c){var row=d.rows[r];var v=row?row[c]:null;return v!=null&&!isNaN(Number(v))?Number(v):null;}
 
 // ═══ HEADER ═══
 document.getElementById("sName").innerHTML=NAME+'<span class="badge '+(IS_ETF?"etf":"stock")+'">'+(IS_ETF?"ETF":"주식")+"</span>";
-document.getElementById("sTicker").textContent=TICKER+(MARKET==="kr"?" · KRX":" · US");
+document.getElementById("sTicker").textContent=TICKER+" · US";
 document.title=NAME+" - "+TICKER;
 
 // ═══ METRICS GRID ═══
+// StockCache: ticker(0),type(1),name(2),per(3),pbr(4),roe(5),eps(6),mktcap(7),divyield(8),debtratio(9),opmargin(10),expenseratio(11),aum(12),sector(13),updated(14)
 var mg=document.getElementById("metricsGrid");
 mg.innerHTML=IS_ETF
-  ?'<div class="m-card"><div class="k">보수율</div><div class="v" id="mER">-</div></div><div class="m-card"><div class="k">순자산</div><div class="v" id="mAUM">-</div></div><div class="m-card"><div class="k">배당률</div><div class="v" id="mDivY">-</div></div><div class="m-card"><div class="k">배당주기</div><div class="v" id="mFreq">-</div></div><div class="m-card"><div class="k">1Y 수익률</div><div class="v" id="mR1Y">-</div></div><div class="m-card"><div class="k">3Y 수익률</div><div class="v" id="mR3Y">-</div></div><div class="m-card"><div class="k">5Y 수익률</div><div class="v" id="mR5Y">-</div></div><div class="m-card"><div class="k">추종지수</div><div class="v" id="mIdx" style="font-size:10px">-</div></div>'
+  ?'<div class="m-card"><div class="k">보수율</div><div class="v" id="mER">-</div></div><div class="m-card"><div class="k">순자산</div><div class="v" id="mAUM">-</div></div><div class="m-card"><div class="k">배당률</div><div class="v" id="mDivY">-</div></div><div class="m-card"><div class="k">섹터</div><div class="v" id="mSector" style="font-size:10px">-</div></div><div class="m-card"><div class="k">1Y 수익률</div><div class="v" id="mR1Y">-</div></div><div class="m-card"><div class="k">3Y 수익률</div><div class="v" id="mR3Y">-</div></div><div class="m-card"><div class="k">5Y 수익률</div><div class="v" id="mR5Y">-</div></div><div class="m-card"><div class="k">시가총액</div><div class="v" id="mCap">-</div></div>'
   :'<div class="m-card"><div class="k">PER</div><div class="v" id="mPER">-</div></div><div class="m-card"><div class="k">PBR</div><div class="v" id="mPBR">-</div></div><div class="m-card"><div class="k">ROE</div><div class="v" id="mROE">-</div></div><div class="m-card"><div class="k">EPS</div><div class="v" id="mEPS">-</div></div><div class="m-card"><div class="k">시가총액</div><div class="v" id="mCap">-</div></div><div class="m-card"><div class="k">배당률</div><div class="v" id="mDivY">-</div></div><div class="m-card"><div class="k">부채비율</div><div class="v" id="mDebt">-</div></div><div class="m-card"><div class="k">영업이익률</div><div class="v" id="mOPM">-</div></div>';
 
 // ═══ TABS ═══
@@ -159,73 +164,59 @@ function showTab(id){tabs.forEach(function(t){var p=document.getElementById("pan
 
 document.querySelectorAll(".period-btn").forEach(function(b){b.addEventListener("click",function(){document.querySelectorAll(".period-btn").forEach(function(x){x.classList.remove("active")});b.classList.add("active");renderChart(b.dataset.p)})});
 
-// ═══ LOAD METRICS FROM StockCache ═══
+// ═══ LOAD METRICS ═══
 async function loadMetrics(){
   try{
     var data=await jsonp("StockCache");
-    console.log("[CACHE] StockCache loaded:",data.rows.length,"rows");
-    // 현재 티커 찾기
     var row=null;
-    for(var i=0;i<data.rows.length;i++){
-      if(String(data.rows[i][0]||"").trim()===TICKER){row=data.rows[i];break}
-    }
+    for(var i=0;i<data.rows.length;i++){if(String(data.rows[i][0]||"").trim()===TICKER){row=data.rows[i];break}}
     if(!row){console.warn("[CACHE] ticker not found:",TICKER);return}
-    
-    // 컬럼: ticker,market,type,name,per,pbr,roe,eps,mktcap,divyield,debtratio,opmargin,expenseratio,aum,trackidx,divfreq,sector,updated
-    console.log("[CACHE] found:",JSON.stringify(row));
+    console.log("[CACHE] StockCache:",TICKER,row);
     
     if(IS_ETF){
-      sM("mER",row[12],function(v){return v+"%"});
-      sM("mAUM",row[13],fB);
-      sM("mDivY",row[9],function(v){return v.toFixed(2)+"%"});
-      var freq=row[15];if(freq)document.getElementById("mFreq").textContent=freq;
-      var idx=row[14];if(idx){var el=document.getElementById("mIdx");el.textContent=String(idx).length>45?String(idx).slice(0,42)+"...":idx}
+      sM("mER",row[11],function(v){return v+"%"});
+      sM("mAUM",row[12],fB);
+      sM("mDivY",row[8],function(v){return v.toFixed(2)+"%"});
+      sM("mCap",row[7],fB);
+      var sec=row[13];if(sec)document.getElementById("mSector").textContent=sec;
     }else{
-      sM("mPER",row[4],function(v){return v.toFixed(1)});
-      sM("mPBR",row[5],function(v){return v.toFixed(2)});
-      sM("mROE",row[6],function(v){return v.toFixed(1)+"%"});
-      sM("mEPS",row[7],function(v){return MARKET==="kr"?v.toLocaleString():"$"+v.toFixed(2)});
-      sM("mCap",row[8],fB);
-      sM("mDivY",row[9],function(v){return v.toFixed(2)+"%"});
-      sM("mDebt",row[10],function(v){return v.toFixed(1)+"%"});
-      sM("mOPM",row[11],function(v){return v.toFixed(1)+"%"});
+      sM("mPER",row[3],function(v){return v.toFixed(1)});
+      sM("mPBR",row[4],function(v){return v.toFixed(2)});
+      sM("mROE",row[5],function(v){return v.toFixed(1)+"%"});
+      sM("mEPS",row[6],function(v){return"$"+v.toFixed(2)});
+      sM("mCap",row[7],fB);
+      sM("mDivY",row[8],function(v){return v.toFixed(2)+"%"});
+      sM("mDebt",row[9],function(v){return v.toFixed(1)+"%"});
+      sM("mOPM",row[10],function(v){return v.toFixed(1)+"%"});
     }
     
-    // 갱신 시간 표시
-    var updated=row[17];
-    if(updated){
-      var d=new Date(updated);
-      document.getElementById("tsUpdated").textContent="최종 갱신: "+d.toLocaleString("ko-KR");
-    }
+    var updated=row[14];
+    if(updated){document.getElementById("tsUpdated").textContent="최종 갱신: "+new Date(updated).toLocaleString("ko-KR")}
   }catch(e){console.error("[CACHE] metrics err:",e)}
 }
 
-// ═══ LOAD PRICES FROM PriceCache ═══
+// ═══ LOAD PRICES ═══
 async function loadPrices(){
   try{
     var data=await jsonp("PriceCache");
-    console.log("[CACHE] PriceCache loaded:",data.rows.length,"rows");
-    // 현재 티커 가격만 필터
     _priceData=[];
     for(var i=0;i<data.rows.length;i++){
       var r=data.rows[i];
       if(String(r[0]||"").trim()!==TICKER)continue;
-      var dt=r[1],cl=Number(r[2]),op=Number(r[3]),hi=Number(r[4]),lo=Number(r[5]);
+      var dt=r[1],cl=Number(r[2]);
       if(!dt||!cl||isNaN(cl))continue;
-      // 날짜 문자열 처리 (Date 객체면 변환)
       var dateStr=(dt instanceof Date)?dt.toISOString().slice(0,10):String(dt).slice(0,10);
-      _priceData.push({date:dateStr,close:cl,open:op||cl,high:hi||cl,low:lo||cl});
+      _priceData.push({date:dateStr,close:cl,open:Number(r[3])||cl,high:Number(r[4])||cl,low:Number(r[5])||cl});
     }
-    // 날짜 정렬
     _priceData.sort(function(a,b){return a.date>b.date?1:-1});
-    console.log("[CACHE] prices for",TICKER,":",_priceData.length,"items");
+    console.log("[CACHE] prices:",_priceData.length);
     
     if(_priceData.length>1){
       var last=_priceData[_priceData.length-1],prev=_priceData[_priceData.length-2];
       var ch=last.close-prev.close,cp=ch/prev.close*100;
-      document.getElementById("sPrice").textContent=MARKET==="kr"?last.close.toLocaleString():"$"+last.close.toFixed(2);
+      document.getElementById("sPrice").textContent="$"+last.close.toFixed(2);
       document.getElementById("sPrice").style.color=pc(ch);
-      document.getElementById("sChange").innerHTML='<span style="color:'+pc(ch)+'">'+(ch>=0?"+":"")+(MARKET==="kr"?Math.round(ch).toLocaleString():ch.toFixed(2))+" ("+(cp>=0?"+":"")+cp.toFixed(2)+"%)</span>";
+      document.getElementById("sChange").innerHTML='<span style="color:'+pc(ch)+'">'+(ch>=0?"+":"")+ch.toFixed(2)+" ("+(cp>=0?"+":"")+cp.toFixed(2)+"%)</span>";
     }
     renderChart("1y");
     if(IS_ETF&&_priceData.length>60)calcReturns();
@@ -253,62 +244,41 @@ function renderChart(period){
       {label:"종가",data:f.map(function(d){return d.close}),borderColor:"#4d9aff",backgroundColor:"rgba(77,154,255,0.06)",fill:true,tension:0.2,pointRadius:0,borderWidth:1.5},
       {label:"MA20",data:ma,borderColor:"#ffc05c",borderWidth:1,pointRadius:0,borderDash:[3,2],tension:0.3}]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
-      scales:{x:{ticks:{color:"#5e82a8",font:{size:8},maxTicksLimit:7},grid:{color:"#1f3a6215"}},y:{ticks:{color:"#5e82a8",font:{size:9},callback:function(v){return MARKET==="kr"?v.toLocaleString():"$"+v.toFixed(0)}},grid:{color:"#1f3a6215"}}},
-      plugins:{legend:{labels:{color:"#9db5d4",font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+": "+(MARKET==="kr"?ctx.raw?.toLocaleString():"$"+ctx.raw?.toFixed(2))}}}}}});
+      scales:{x:{ticks:{color:"#5e82a8",font:{size:8},maxTicksLimit:7},grid:{color:"#1f3a6215"}},y:{ticks:{color:"#5e82a8",font:{size:9},callback:function(v){return"$"+v.toFixed(0)}},grid:{color:"#1f3a6215"}}},
+      plugins:{legend:{labels:{color:"#9db5d4",font:{size:10}}},tooltip:{callbacks:{label:function(ctx){return ctx.dataset.label+": $"+ctx.raw?.toFixed(2)}}}}}});
 }
 
-// ═══ HOLDINGS FROM HoldingsCache ═══
+// ═══ HOLDINGS ═══
 async function loadHoldings(){
-  // 외부 링크
-  if(MARKET==="kr"){
-    var code=TICKER.replace(/\D/g,"").slice(0,6);
-    document.getElementById("holdingsLinks").innerHTML='<div class="ext-links"><a href="https://www.etfcheck.co.kr/mobile/etpitem/'+code+'/" target="_blank">📊 ETF CHECK</a><a href="https://finance.naver.com/item/coinfo.naver?code='+code+'" target="_blank">📈 네이버 금융</a></div>';
-  }
   try{
     var data=await jsonp("HoldingsCache");
     var holdings=[];
     for(var i=0;i<data.rows.length;i++){
       var r=data.rows[i];
-      if(String(r[0]||"").trim()===TICKER){
-        holdings.push({rank:r[1],name:r[2]||"",ticker:r[3]||"",weight:Number(r[4])||0});
-      }
+      if(String(r[0]||"").trim()===TICKER) holdings.push({rank:r[1],name:r[2]||"",ticker:r[3]||"",weight:Number(r[4])||0});
     }
     holdings.sort(function(a,b){return a.rank-b.rank});
-    console.log("[CACHE] holdings for",TICKER,":",holdings.length);
     
     if(!holdings.length){
       document.getElementById("holdingsList").innerHTML='<div style="text-align:center;padding:16px;color:var(--sub);font-size:11px">보유종목 데이터 없음</div>';
-      document.getElementById("chHoldings").parentElement.parentElement.style.display="none";
       return;
     }
     
     var colors=["#4d9aff","#2ee0a8","#ae82ff","#ffc05c","#ff6b78","#5cc9f5","#ff9cf5","#8aff80","#ffb347","#6c8eff"];
     if(charts.hold)charts.hold.destroy();
     charts.hold=new Chart(document.getElementById("chHoldings"),{type:"doughnut",
-      data:{labels:holdings.map(function(h){return h.name}),
-        datasets:[{data:holdings.map(function(h){return h.weight}),backgroundColor:colors,borderWidth:0}]},
-      options:{responsive:true,maintainAspectRatio:false,cutout:"55%",plugins:{legend:{display:false},
-        tooltip:{callbacks:{label:function(ctx){return ctx.label+": "+ctx.raw.toFixed(2)+"%"}}}}}});
+      data:{labels:holdings.map(function(h){return h.name}),datasets:[{data:holdings.map(function(h){return h.weight}),backgroundColor:colors,borderWidth:0}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:"55%",plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.label+": "+ctx.raw.toFixed(2)+"%"}}}}}});
     
     var html="";holdings.forEach(function(h,i){
       html+='<div class="hold-row"><div class="hold-rank">'+(i+1)+'</div><div class="hold-name"><div class="n">'+h.name+'</div>'+(h.ticker?'<div class="t">'+h.ticker+'</div>':'')+'</div><div class="hold-pct">'+h.weight.toFixed(2)+'%</div></div>';
     });
     document.getElementById("holdingsList").innerHTML=html;
-  }catch(e){
-    document.getElementById("holdingsList").innerHTML='<div class="err">'+e.message+'</div>';
-    document.getElementById("chHoldings").parentElement.parentElement.style.display="none";
-  }
+  }catch(e){document.getElementById("holdingsList").innerHTML='<div class="err">'+e.message+'</div>'}
 }
 
-// ═══ FINANCIALS FROM FinCache ═══
+// ═══ FINANCIALS ═══
 async function loadFinancials(){
-  if(MARKET!=="us"||IS_ETF){
-    var code=TICKER.replace(/\D/g,"").slice(0,6);
-    document.getElementById("finTableWrap").innerHTML='<div class="ext-links"><a href="https://finance.naver.com/item/coinfo.naver?code='+code+'" target="_blank">네이버 금융 →</a></div>';
-    document.getElementById("chRevenue").parentElement.parentElement.style.display="none";
-    document.getElementById("chEarnings").parentElement.parentElement.style.display="none";
-    return;
-  }
   try{
     var data=await jsonp("FinCache");
     var years=[],revenue=[],opincome=[],netincome=[],eps=[],assets=[],debt=[],equity=[];
@@ -316,32 +286,21 @@ async function loadFinancials(){
     for(var i=0;i<data.rows.length;i++){
       var r=data.rows[i];
       if(String(r[0]||"").trim()!==TICKER)continue;
-      years.push(String(r[1]||""));
-      revenue.push(Number(r[2])||0);
-      opincome.push(Number(r[3])||0);
-      netincome.push(Number(r[4])||0);
-      eps.push(Number(r[5])||0);
-      assets.push(Number(r[6])||0);
-      debt.push(Number(r[7])||0);
-      equity.push(Number(r[8])||0);
+      years.push(String(r[1]||""));revenue.push(Number(r[2])||0);opincome.push(Number(r[3])||0);
+      netincome.push(Number(r[4])||0);eps.push(Number(r[5])||0);
+      assets.push(Number(r[6])||0);debt.push(Number(r[7])||0);equity.push(Number(r[8])||0);
     }
     
-    // FMP는 최신순, 시트에도 최신순일 수 있으므로 연도순 정렬
-    var indices=years.map(function(_,i){return i}).sort(function(a,b){return years[a]>years[b]?1:-1});
-    years=indices.map(function(i){return years[i]});
-    revenue=indices.map(function(i){return revenue[i]});
-    opincome=indices.map(function(i){return opincome[i]});
-    netincome=indices.map(function(i){return netincome[i]});
-    eps=indices.map(function(i){return eps[i]});
-    assets=indices.map(function(i){return assets[i]});
-    debt=indices.map(function(i){return debt[i]});
-    equity=indices.map(function(i){return equity[i]});
+    // 연도순 정렬
+    var idx=years.map(function(_,i){return i}).sort(function(a,b){return years[a]>years[b]?1:-1});
+    years=idx.map(function(i){return years[i]});revenue=idx.map(function(i){return revenue[i]});
+    opincome=idx.map(function(i){return opincome[i]});netincome=idx.map(function(i){return netincome[i]});
+    eps=idx.map(function(i){return eps[i]});assets=idx.map(function(i){return assets[i]});
+    debt=idx.map(function(i){return debt[i]});equity=idx.map(function(i){return equity[i]});
     
     if(!years.length){document.getElementById("finTableWrap").innerHTML='<div class="err">재무 데이터 없음</div>';return}
     
-    console.log("[CACHE] financials for",TICKER,":",years.length,"years");
-    
-    // Charts
+    // Revenue chart
     if(charts.rev)charts.rev.destroy();
     charts.rev=new Chart(document.getElementById("chRevenue"),{type:"bar",
       data:{labels:years,datasets:[
@@ -349,6 +308,7 @@ async function loadFinancials(){
         {label:"영업이익",data:opincome,backgroundColor:"#2ee0a880",borderRadius:4,maxBarThickness:28}]},
       options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:"#5e82a8",font:{size:9}},grid:{display:false}},y:{ticks:{color:"#5e82a8",font:{size:8},callback:fB},grid:{color:"#1f3a6215"}}},plugins:{legend:{labels:{color:"#9db5d4",font:{size:10},usePointStyle:true}}}}});
     
+    // Earnings chart
     if(charts.earn)charts.earn.destroy();
     charts.earn=new Chart(document.getElementById("chEarnings"),{type:"bar",
       data:{labels:years,datasets:[
@@ -357,19 +317,18 @@ async function loadFinancials(){
       options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:"#5e82a8",font:{size:9}},grid:{display:false}},yL:{position:"left",ticks:{color:"#5e82a8",font:{size:8},callback:fB},grid:{color:"#1f3a6215"}},yR:{position:"right",ticks:{color:"#ffc05c",font:{size:8},callback:function(v){return"$"+v.toFixed(1)}},grid:{display:false}}},plugins:{legend:{labels:{color:"#9db5d4",font:{size:10},usePointStyle:true}}}}});
     
     // Table
-    var rows=[{l:"매출",d:revenue,f:fB},{l:"영업이익",d:opincome,f:fB},{l:"순이익",d:netincome,f:fB},{l:"EPS",d:eps,f:function(v){return"$"+v.toFixed(2)}}];
-    if(assets[0])rows.push({l:"총자산",d:assets,f:fB},{l:"총부채",d:debt,f:fB},{l:"자기자본",d:equity,f:fB});
+    var items=[{l:"매출",d:revenue,f:fB},{l:"영업이익",d:opincome,f:fB},{l:"순이익",d:netincome,f:fB},{l:"EPS",d:eps,f:function(v){return"$"+v.toFixed(2)}}];
+    if(assets[0])items.push({l:"총자산",d:assets,f:fB},{l:"총부채",d:debt,f:fB},{l:"자기자본",d:equity,f:fB});
     var h='<table class="fin-tbl"><thead><tr><th>항목</th>'+years.map(function(y){return"<th>"+y+"</th>"}).join("")+"</tr></thead><tbody>";
-    rows.forEach(function(r){h+="<tr><td>"+r.l+"</td>"+r.d.map(function(v){return'<td style="color:'+(v<0?"var(--red)":"var(--txt2)")+'">'+(v?r.f(v):"-")+"</td>"}).join("")+"</tr>"});
+    items.forEach(function(r){h+="<tr><td>"+r.l+"</td>"+r.d.map(function(v){return'<td style="color:'+(v<0?"var(--red)":"var(--txt2)")+'">'+(v?r.f(v):"-")+"</td>"}).join("")+"</tr>"});
     document.getElementById("finTableWrap").innerHTML=h+"</tbody></table>";
   }catch(e){document.getElementById("finTableWrap").innerHTML='<div class="err">'+e.message+"</div>"}
 }
 
-// ═══ NEWS (여전히 실시간 - 뉴스는 캐시 불필요) ═══
+// ═══ NEWS (실시간 Google RSS) ═══
 async function loadNews(){
   try{
-    var q=MARKET==="us"?TICKER+" stock":NAME+" ETF 주식";
-    var xml=await(await fetch(PROXY+encodeURIComponent("https://news.google.com/rss/search?q="+encodeURIComponent(q)+"&hl="+(MARKET==="kr"?"ko":"en")+"&gl="+(MARKET==="kr"?"KR":"US")+"&ceid="+(MARKET==="kr"?"KR:ko":"US:en")))).text();
+    var xml=await(await fetch(PROXY+encodeURIComponent("https://news.google.com/rss/search?q="+encodeURIComponent(TICKER+" stock")+"&hl=en&gl=US&ceid=US:en"))).text();
     var items=new DOMParser().parseFromString(xml,"text/xml").querySelectorAll("item");
     if(!items.length){document.getElementById("newsList").innerHTML='<div class="err">뉴스 없음</div>';return}
     var h="";for(var i=0;i<Math.min(items.length,10);i++){var it=items[i];h+='<div class="news-item"><a href="'+(it.querySelector("link")?.textContent||"#")+'" target="_blank">'+(it.querySelector("title")?.textContent||"")+'</a><div class="meta">'+(it.querySelector("source")?.textContent||"")+" · "+tA(it.querySelector("pubDate")?.textContent)+"</div></div>"}
@@ -378,11 +337,9 @@ async function loadNews(){
 }
 function tA(ds){if(!ds)return"";var d=Math.floor((Date.now()-new Date(ds))/1000);if(d<3600)return Math.floor(d/60)+"분 전";if(d<86400)return Math.floor(d/3600)+"시간 전";if(d<604800)return Math.floor(d/86400)+"일 전";return new Date(ds).toLocaleDateString("ko-KR")}
 
-// ═══ START: 구글시트 캐시에서 모든 데이터 로드 ═══
-console.log("=== STOCK DETAIL (Cache Mode) ===",TICKER,MARKET,STYPE);
-Promise.all([loadMetrics(), loadPrices()]).then(function(){
-  console.log("✅ 메트릭+가격 로드 완료");
-});
+// ═══ START ═══
+console.log("=== STOCK DETAIL (Cache) ===",TICKER,STYPE);
+Promise.all([loadMetrics(), loadPrices()]);
 </script>
 </body>
 </html>
