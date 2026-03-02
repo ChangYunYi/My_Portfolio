@@ -115,7 +115,7 @@ var P=new URLSearchParams(location.search);
 var TICKER=P.get("ticker")||"",NAME=decodeURIComponent(P.get("name")||TICKER),STYPE=P.get("type")||"stock",IS_ETF=STYPE==="etf";
 var SID="1b9GtLud9TDFm4AvUnCEfDGu_4CTqYfRU8oYFAh2VSxc";
 var PROXY="https://api.allorigins.win/raw?url=";
-var charts={},_priceData=[];
+var charts={},_priceData=[],_mktCap=0,_curPrice=0,_curEPS=0,_rawEPS=0,_rawPER=0;
 
 // ═══ UTILS ═══
 function fB(v){var a=Math.abs(v);if(a>=1e12)return"$"+(v/1e12).toFixed(2)+"T";if(a>=1e9)return"$"+(v/1e9).toFixed(1)+"B";if(a>=1e6)return"$"+(v/1e6).toFixed(0)+"M";return"$"+v.toLocaleString()}
@@ -205,7 +205,18 @@ async function loadMetrics(){
       sM("mPER",row[3],function(v){return v.toFixed(1)});
       sM("mPBR",row[4],function(v){return v.toFixed(2)});
       sM("mROE",row[5],function(v){return v.toFixed(1)+"%"});
-      sM("mEPS",row[6],function(v){return"$"+v.toFixed(2)});
+      // EPS: 일단 표시하되, 비정상적으로 크면 correctTopEPS()에서 보정
+      _rawEPS=Number(row[6])||0;
+      _rawPER=Number(row[3])||0;
+      _mktCap=Number(row[7])||0;
+      _curEPS=_rawEPS;
+      if(Math.abs(_rawEPS)<=1000){
+        sM("mEPS",_rawEPS,function(v){return"$"+v.toFixed(2)});
+      }else{
+        // 비정상 값 → 로딩 후 correctTopEPS에서 보정 예정
+        document.getElementById("mEPS").textContent="보정중...";
+        document.getElementById("mEPS").style.color="var(--amber)";
+      }
       sM("mCap",row[7],fB);
       sM("mDivY",row[8],function(v){return v.toFixed(2)+"%"});
       sM("mDebt",row[9],function(v){return v.toFixed(1)+"%"});
@@ -237,6 +248,7 @@ async function loadPrices(){
     if(_priceData.length>1){
       var last=_priceData[_priceData.length-1],prev=_priceData[_priceData.length-2];
       var ch=last.close-prev.close,cp=ch/prev.close*100;
+      _curPrice=last.close;
       document.getElementById("sPrice").textContent="$"+last.close.toFixed(2);
       document.getElementById("sPrice").style.color=pc(ch);
       document.getElementById("sChange").innerHTML='<span style="color:'+pc(ch)+'">'+(ch>=0?"+":"")+ch.toFixed(2)+" ("+(cp>=0?"+":"")+cp.toFixed(2)+"%)</span>";
@@ -328,6 +340,47 @@ async function loadFinancials(){
     eps=idx.map(function(i){return eps[i]});assets=idx.map(function(i){return assets[i]});
     debt=idx.map(function(i){return debt[i]});equity=idx.map(function(i){return equity[i]});
     
+    // ═══ EPS 보정 로직 ═══
+    // EPS 컬럼에 Net Income(수십억~수천억) 값이 들어온 경우 감지 & 자동 수정
+    // 정상 EPS: 대부분 -$100 ~ $500 범위 (BRK.A 같은 극단적 예외 제외)
+    // Net Income: 보통 수백만~수천억 단위
+    var maxEps=Math.max.apply(null,eps.filter(function(v){return v!==0}).map(Math.abs));
+    var epsLooksLikeNetIncome=maxEps>1000; // EPS가 $1000 초과면 Net Income으로 판단
+    
+    if(epsLooksLikeNetIncome){
+      console.warn("[FIN] EPS 이상 감지: max="+maxEps+" → Net Income으로 추정, 주당 값으로 재계산");
+      
+      // 방법 1: 시가총액 + 현재가로 발행주식수 추정
+      var sharesEst=0;
+      if(_mktCap>0&&_curPrice>0){
+        sharesEst=_mktCap/_curPrice;
+        console.log("[FIN] 추정 발행주식수: "+sharesEst.toExponential(2)+" (시가총액 "+_mktCap+" / 주가 "+_curPrice+")");
+      }
+      
+      if(sharesEst>0){
+        // EPS 컬럼 값이 Net Income이므로 주식수로 나눠서 보정
+        eps=eps.map(function(v){return v!==0?v/sharesEst:0});
+        console.log("[FIN] 보정된 EPS:", eps.map(function(v){return v.toFixed(2)}));
+      }else{
+        // 시가총액 데이터 없으면, Net Income과 EPS 관계로 추정
+        // EPS컬럼과 NetIncome컬럼이 거의 같은 값이면, NetIncome 컬럼으로 나눠서 비율 추정
+        var validPairs=[];
+        for(var j=0;j<eps.length;j++){
+          if(eps[j]!==0&&netincome[j]!==0){
+            // 둘 다 비슷하면 EPS가 실제로 Net Income인 것
+            if(Math.abs(eps[j]-netincome[j])/Math.abs(netincome[j])<0.01){
+              // EPS와 Net Income이 거의 같으면 → EPS 컬럼은 Net Income
+              // 최근 연도 PER에서 역산 시도
+            }
+            validPairs.push({eps:eps[j],ni:netincome[j]});
+          }
+        }
+        console.warn("[FIN] 시가총액 없음, EPS 보정 불가 → 테이블에 경고 표시");
+        // EPS를 0으로 리셋하여 잘못된 수치 표시 방지
+        eps=eps.map(function(){return 0});
+      }
+    }
+    
     if(!years.length){document.getElementById("finTableWrap").innerHTML='<div class="err">재무 데이터 없음</div>';return}
     
     // Revenue chart
@@ -338,19 +391,27 @@ async function loadFinancials(){
         {label:"영업이익",data:opincome,backgroundColor:"#2ee0a880",borderRadius:4,maxBarThickness:28}]},
       options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:"#5e82a8",font:{size:9}},grid:{display:false}},y:{ticks:{color:"#5e82a8",font:{size:8},callback:fB},grid:{color:"#1f3a6215"}}},plugins:{legend:{labels:{color:"#9db5d4",font:{size:10},usePointStyle:true}}}}});
     
-    // Earnings chart
+    // Earnings chart - EPS가 보정된 경우에만 yR 축 표시
+    var epsHasData=eps.some(function(v){return v!==0});
     if(charts.earn)charts.earn.destroy();
     charts.earn=new Chart(document.getElementById("chEarnings"),{type:"bar",
       data:{labels:years,datasets:[
         {label:"순이익",data:netincome,backgroundColor:"#ae82ff80",borderRadius:4,maxBarThickness:28,yAxisID:"yL"},
-        {label:"EPS",data:eps,type:"line",borderColor:"#ffc05c",pointBackgroundColor:"#ffc05c",pointRadius:3,borderWidth:1.5,yAxisID:"yR"}]},
-      options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:"#5e82a8",font:{size:9}},grid:{display:false}},yL:{position:"left",ticks:{color:"#5e82a8",font:{size:8},callback:fB},grid:{color:"#1f3a6215"}},yR:{position:"right",ticks:{color:"#ffc05c",font:{size:8},callback:function(v){return"$"+v.toFixed(1)}},grid:{display:false}}},plugins:{legend:{labels:{color:"#9db5d4",font:{size:10},usePointStyle:true}}}}});
+        epsHasData?{label:"EPS",data:eps,type:"line",borderColor:"#ffc05c",pointBackgroundColor:"#ffc05c",pointRadius:3,borderWidth:1.5,yAxisID:"yR"}:null
+      ].filter(Boolean)},
+      options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:"#5e82a8",font:{size:9}},grid:{display:false}},yL:{position:"left",ticks:{color:"#5e82a8",font:{size:8},callback:fB},grid:{color:"#1f3a6215"}},yR:epsHasData?{position:"right",ticks:{color:"#ffc05c",font:{size:8},callback:function(v){return"$"+v.toFixed(1)}},grid:{display:false}}:{display:false}},plugins:{legend:{labels:{color:"#9db5d4",font:{size:10},usePointStyle:true}}}}});
     
     // Table
-    var items=[{l:"매출",d:revenue,f:fB},{l:"영업이익",d:opincome,f:fB},{l:"순이익",d:netincome,f:fB},{l:"EPS",d:eps,f:function(v){return"$"+v.toFixed(2)}}];
+    var items=[{l:"매출",d:revenue,f:fB},{l:"영업이익",d:opincome,f:fB},{l:"순이익",d:netincome,f:fB}];
+    if(epsHasData){
+      items.push({l:"EPS",d:eps,f:function(v){return"$"+v.toFixed(2)}});
+    }else{
+      items.push({l:"EPS",d:eps,f:function(v){return v===0?"⚠️ 데이터 보정 필요":"$"+v.toFixed(2)}});
+    }
     if(assets[0])items.push({l:"총자산",d:assets,f:fB},{l:"총부채",d:debt,f:fB},{l:"자기자본",d:equity,f:fB});
     var h='<table class="fin-tbl"><thead><tr><th>항목</th>'+years.map(function(y){return"<th>"+y+"</th>"}).join("")+"</tr></thead><tbody>";
     items.forEach(function(r){h+="<tr><td>"+r.l+"</td>"+r.d.map(function(v){return'<td style="color:'+(v<0?"var(--red)":"var(--txt2)")+'">'+(v?r.f(v):"-")+"</td>"}).join("")+"</tr>"});
+    if(epsLooksLikeNetIncome&&epsHasData){h+='<tr><td colspan="'+(years.length+1)+'" style="color:var(--amber);font-size:10px;text-align:center;padding:8px">⚠️ EPS는 시가총액 기반으로 자동 보정된 값입니다</td></tr>'}
     document.getElementById("finTableWrap").innerHTML=h+"</tbody></table>";
   }catch(e){document.getElementById("finTableWrap").innerHTML='<div class="err">'+e.message+"</div>"}
 }
@@ -369,7 +430,26 @@ function tA(ds){if(!ds)return"";var d=Math.floor((Date.now()-new Date(ds))/1000)
 
 // ═══ START ═══
 console.log("=== STOCK DETAIL (Cache) ===",TICKER,STYPE);
-Promise.all([loadMetrics(), loadPrices()]);
+Promise.all([loadMetrics(), loadPrices()]).then(function(){
+  // 가격과 메트릭 모두 로드 후 EPS 상단 표시 보정
+  correctTopEPS();
+});
+
+function correctTopEPS(){
+  if(!_rawEPS||Math.abs(_rawEPS)<=1000)return; // 정상 범위면 보정 불필요
+  var corrected=_rawEPS;
+  if(_mktCap>0&&_curPrice>0){
+    var shares=_mktCap/_curPrice;
+    corrected=_rawEPS/shares;
+  }else if(_rawPER>0&&_curPrice>0){
+    corrected=_curPrice/_rawPER;
+  }
+  if(Math.abs(corrected)<=1000&&corrected!==_rawEPS){
+    _curEPS=corrected;
+    sM("mEPS",corrected,function(v){return"$"+v.toFixed(2)});
+    console.log("[FIX] 상단 EPS 보정 완료: "+_rawEPS+" → "+corrected.toFixed(2));
+  }
+}
 </script>
 </body>
 </html>
