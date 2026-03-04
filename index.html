@@ -1243,44 +1243,63 @@ function mkBigChartSVG(closes, maLines, bb, w, h, fmtShort){
   w=w||560; h=h||180;
   if(!closes||closes.length<5)return'<div style="text-align:center;padding:40px;color:var(--mute);font-size:12px">차트 데이터 없음</div>';
   const d=closes.slice(-90);
+
+  // ★ Fix1: maLines(=d.ind)에서 ma키 숫자값만 추출 — rsi(50~80)·bb오브젝트 제외
+  const maOnly={};
+  if(maLines) Object.entries(maLines).forEach(([k,v])=>{
+    if(k.startsWith('ma')&&typeof v==='number'&&v>0) maOnly[k]=v;
+  });
+
+  // ★ Fix2: allV에 ma숫자값만 포함 — rsi·bb object 혼입 시 Math.min→NaN으로 차트 깨짐
   const allV=[...d];
-  if(maLines)Object.values(maLines).forEach(v=>{if(v!=null)allV.push(v);});
-  if(bb){allV.push(bb.upper,bb.lower);}
+  Object.values(maOnly).forEach(v=>allV.push(v));
+  if(bb&&typeof bb.upper==='number'&&typeof bb.lower==='number'){
+    allV.push(bb.upper,bb.lower);
+  }
+
   const mn=Math.min(...allV)*.997, mx=Math.max(...allV)*1.003, rng=mx-mn||1;
-  const pL=52,pR=12,pT=8,pB=4,cw=w-pL-pR,ch=h-pT-pB;
+  if(!isFinite(mn)||!isFinite(mx)){
+    return'<div style="text-align:center;padding:40px;color:var(--mute);font-size:12px">차트 스케일 오류</div>';
+  }
+
+  const pL=56,pR=18,pT=10,pB=6,cw=w-pL-pR,ch=h-pT-pB;
   const Y=v=>pT+((mx-v)/rng)*ch, X=i=>pL+(i/(d.length-1))*cw;
   const pts=d.map((v,i)=>`${i===0?"M":"L"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
   const up=d[d.length-1]>=d[0], clr=up?"#2ee0a8":"#ff6b78";
   const maC={ma50:"#4d9aff",ma100:"#ae82ff",ma200:"#ffc05c",ma300:"#ff6bb5"};
   const maLb={ma50:"50D",ma100:"100D",ma200:"200D",ma300:"300D"};
   let els="";
+
   // 그리드 라인 + Y축 레이블
   for(let i=0;i<=4;i++){
     const v=mx-(rng/4)*i;
     els+=`<line x1="${pL}" y1="${Y(v).toFixed(1)}" x2="${w-pR}" y2="${Y(v).toFixed(1)}" stroke="#1e293b" stroke-width=".5"/>`;
-    els+=`<text x="${pL-3}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end" fill="#5e82a8" font-size="9" font-family="monospace">${fmtShort(v)}</text>`;
+    // ★ Fix3: String() 명시 — "₩"+숫자*숫자|0 연산자 우선순위로 0이 반환되는 버그 방지
+    els+=`<text x="${pL-4}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end" fill="#5e82a8" font-size="9" font-family="monospace">${String(fmtShort(v))}</text>`;
   }
   // BB 영역
-  if(bb&&Y(bb.upper)<Y(bb.lower)){
-    els+=`<rect x="${pL}" y="${Y(bb.upper).toFixed(1)}" width="${cw}" height="${Math.max(0,Y(bb.lower)-Y(bb.upper)).toFixed(1)}" fill="rgba(234,179,8,.06)"/>`;
-    els+=`<line x1="${pL}" y1="${Y(bb.upper).toFixed(1)}" x2="${w-pR}" y2="${Y(bb.upper).toFixed(1)}" stroke="#eab308" stroke-width=".7" stroke-dasharray="4,3" opacity=".5"/>`;
-    els+=`<line x1="${pL}" y1="${Y(bb.lower).toFixed(1)}" x2="${w-pR}" y2="${Y(bb.lower).toFixed(1)}" stroke="#eab308" stroke-width=".7" stroke-dasharray="4,3" opacity=".5"/>`;
+  if(bb&&typeof bb.upper==='number'&&typeof bb.lower==='number'){
+    const yu=Y(bb.upper),yl=Y(bb.lower);
+    if(yu<yl){
+      els+=`<rect x="${pL}" y="${yu.toFixed(1)}" width="${cw}" height="${(yl-yu).toFixed(1)}" fill="rgba(234,179,8,.06)"/>`;
+      els+=`<line x1="${pL}" y1="${yu.toFixed(1)}" x2="${w-pR}" y2="${yu.toFixed(1)}" stroke="#eab308" stroke-width=".7" stroke-dasharray="4,3" opacity=".5"/>`;
+      els+=`<line x1="${pL}" y1="${yl.toFixed(1)}" x2="${w-pR}" y2="${yl.toFixed(1)}" stroke="#eab308" stroke-width=".7" stroke-dasharray="4,3" opacity=".5"/>`;
+    }
   }
-  // 이동평균선
-  if(maLines){
-    Object.entries(maLines).forEach(([k,v])=>{
-      if(v==null||v<mn||v>mx)return;
-      els+=`<line x1="${pL}" y1="${Y(v).toFixed(1)}" x2="${w-pR}" y2="${Y(v).toFixed(1)}" stroke="${maC[k]}" stroke-width="1.1" stroke-dasharray="6,3" opacity=".65"/>`;
-      els+=`<text x="${w-pR+2}" y="${(Y(v)+3).toFixed(1)}" fill="${maC[k]}" font-size="7.5" font-family="monospace" font-weight="700">${maLb[k]}</text>`;
-    });
-  }
+  // 이동평균선 (ma키만)
+  Object.entries(maOnly).forEach(([k,v])=>{
+    if(v<mn||v>mx)return;
+    els+=`<line x1="${pL}" y1="${Y(v).toFixed(1)}" x2="${w-pR}" y2="${Y(v).toFixed(1)}" stroke="${maC[k]}" stroke-width="1.1" stroke-dasharray="6,3" opacity=".65"/>`;
+    els+=`<text x="${w-pR+3}" y="${(Y(v)+3).toFixed(1)}" fill="${maC[k]}" font-size="8" font-family="monospace" font-weight="700">${maLb[k]}</text>`;
+  });
   // 가격선 + 그라디언트
   const gid=`bc${Math.random().toString(36).slice(2,6)}`;
   els+=`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${clr}" stop-opacity=".18"/><stop offset="100%" stop-color="${clr}" stop-opacity="0"/></linearGradient></defs>`;
-  els+=`<path d="${pts} L${w-pR},${h-pB} L${pL},${h-pB} Z" fill="url(#${gid})"/>`;
+  els+=`<path d="${pts} L${X(d.length-1).toFixed(1)},${(h-pB).toFixed(1)} L${pL},${(h-pB).toFixed(1)} Z" fill="url(#${gid})"/>`;
   els+=`<path d="${pts}" fill="none" stroke="${clr}" stroke-width="2"/>`;
   els+=`<circle cx="${X(d.length-1).toFixed(1)}" cy="${Y(d[d.length-1]).toFixed(1)}" r="4" fill="${clr}" stroke="#0d1525" stroke-width="2"/>`;
-  return`<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;overflow:visible">${els}</svg>`;
+  // ★ preserveAspectRatio="xMidYMid meet" — none이면 텍스트·점이 찌그러짐
+  return`<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" style="display:block;overflow:visible">${els}</svg>`;
 }
 
 function rsShowDetail(ticker, isKR){
@@ -1299,7 +1318,7 @@ function rsShowDetail(ticker, isKR){
   const up=(d?.changePct||0)>=0;
   const clr=up?"var(--green)":"var(--red)";
   const priceFmt=isKR?(v=>"₩"+Math.round(v).toLocaleString("ko-KR")):(v=>"$"+v.toFixed(2));
-  const shortFmt=isKR?(v=>"₩"+Math.round(v/100)*100|0):(v=>"$"+v.toFixed(0));
+  const shortFmt=isKR?(v=>"₩"+(Math.round(v/100)*100).toLocaleString("ko-KR")):(v=>"$"+v.toFixed(0));
   const sevColor={critical:"#ef4444",high:"#f97316",medium:"#eab308",low:"#2ee0a8"};
   const sevLabel={critical:"CRITICAL",high:"HIGH",medium:"MEDIUM",low:"LOW"};
   const sevBorderL={critical:"#ef4444",high:"#f97316",medium:"#eab308",low:"#334155"};
