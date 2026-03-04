@@ -760,8 +760,31 @@ function renderUSRisk(el){
 }
 
 // ═══ 국장 RISK 탭 ═══
+// 티커 코드 기준 섹터 분류 (대소문자 무관)
+const KR_SECTORS=[
+  {id:"kr-index",   label:"지수형 INDEX",   icon:"📊", color:"var(--blue)",
+   tickers:["0137V0","426030","0019K0","484790"]},
+  {id:"kr-growth",  label:"성장형 GROWTH",  icon:"🚀", color:"var(--purple)",
+   tickers:["465580","0041D0"]},
+  {id:"kr-dividend",label:"배당형 DIVIDEND",icon:"💰", color:"var(--green)",
+   tickers:["0144L0","441640","0049M0","161510"]},
+];
+// 티커 → 섹터 빠른 조회 (대소문자 무관)
+function krSectorOf(ticker){
+  const t=(ticker||"").replace(/\.(KS|KQ)$/i,"").toUpperCase();
+  return KR_SECTORS.find(s=>s.tickers.some(st=>st.toUpperCase()===t))||null;
+}
+
 function renderKRRisk(el){
   const krStocks=P.kr.filter(h=>h.ticker);
+
+  // 섹터별로 P.kr 항목 분류
+  const sectorItems=KR_SECTORS.map(sec=>({
+    ...sec,
+    items: krStocks.filter(h=>krSectorOf(h.ticker)?.id===sec.id),
+  }));
+  // 어느 섹터에도 안 들어간 종목은 별도 처리
+  const uncategorized=krStocks.filter(h=>!krSectorOf(h.ticker));
 
   el.innerHTML=`<div class="section">
     <!-- 헤더 상태바 -->
@@ -777,17 +800,31 @@ function renderKRRisk(el){
       </div>
     </div>
 
-    <!-- 국내 종목 카드 그리드 -->
+    <!-- 섹터별 종목 카드 그리드 -->
+    ${sectorItems.filter(sec=>sec.items.length>0).map(sec=>`
+    <div style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
+        <span style="font-size:14px">${sec.icon}</span>
+        <span style="font-size:12px;font-weight:800;color:${sec.color};letter-spacing:0.5px">${sec.label}</span>
+        <div style="flex:1;height:1px;background:linear-gradient(90deg,${sec.color}30,transparent)"></div>
+        <span id="rsSecAlert_${rsSafeId(sec.label)}" style="font-size:10px;color:var(--mute)"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">
+        ${sec.items.map(h=>mkRSCard(h,true,sec.color)).join("")}
+      </div>
+    </div>`).join("")}
+
+    ${uncategorized.length>0?`
     <div style="margin-bottom:18px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
         <span style="font-size:14px">🇰🇷</span>
-        <span style="font-size:12px;font-weight:800;color:var(--amber);letter-spacing:0.5px">국내 포트폴리오</span>
+        <span style="font-size:12px;font-weight:800;color:var(--amber);letter-spacing:0.5px">기타</span>
         <div style="flex:1;height:1px;background:linear-gradient(90deg,var(--amber)30,transparent)"></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">
-        ${krStocks.map(h=>mkRSCard(h,true,"var(--amber)")).join("")}
+        ${uncategorized.map(h=>mkRSCard(h,true,"var(--amber)")).join("")}
       </div>
-    </div>
+    </div>`:""}
 
     <!-- 리스크 지표 통합 차트 -->
     <div class="card" style="margin-top:4px">
@@ -1171,10 +1208,19 @@ function rsUpdateMonitor(mkt){
   const priceFmt=isUS?(v=>"$"+v.toFixed(2)):(v=>"₩"+Math.round(v).toLocaleString("ko-KR"));
   const stocks=isUS?[...P.index,...P.dividend,...P.growth]:P.kr||[];
 
-  // 섹터별 리스크 카운트 배지 (US만)
+  // 섹터별 리스크 카운트 배지
   if(isUS){
     [{label:"지수형 INDEX",items:P.index},{label:"배당형 DIVIDEND",items:P.dividend},{label:"성장주 GROWTH",items:P.growth}].forEach(sec=>{
       const cnt=sec.items.filter(h=>h.ticker).reduce((s,h)=>s+(RS_US.data[h.ticker]?.risks?.length||0),0);
+      const el=document.getElementById("rsSecAlert_"+rsSafeId(sec.label));
+      if(el)el.innerHTML=cnt>0?`<span class="rs-badge rs-crit">${cnt} risks</span>`:"";
+    });
+  }else{
+    KR_SECTORS.forEach(sec=>{
+      const cnt=sec.tickers
+        .map(t=>P.kr?.find(h=>h.ticker&&h.ticker.replace(/\.(KS|KQ)$/i,"").toUpperCase()===t.toUpperCase()))
+        .filter(Boolean)
+        .reduce((s,h)=>s+(RS_KR.data[h.ticker]?.risks?.length||0),0);
       const el=document.getElementById("rsSecAlert_"+rsSafeId(sec.label));
       if(el)el.innerHTML=cnt>0?`<span class="rs-badge rs-crit">${cnt} risks</span>`:"";
     });
