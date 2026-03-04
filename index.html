@@ -990,9 +990,14 @@ async function rsUSCandles(sym){const j=await rsYahooFetch(sym,"2y","1d");return
 // ── KR 티커 변환 ──
 function rsKRTicker(t){
   if(!t)return t;
-  if(t.startsWith("KRX:"))return t.replace("KRX:","")+".KS";
+  t=t.trim();
+  // 이미 시장 접미사 있음
   if(t.endsWith(".KS")||t.endsWith(".KQ"))return t;
-  if(/^\d{5,6}$/.test(t.trim()))return t.trim()+".KS";
+  // KRX: 접두사
+  if(t.startsWith("KRX:"))return t.replace("KRX:","")+".KS";
+  // 한국 종목 코드: 숫자로 시작하는 5~7자리 영숫자 (ex. 426030, 0019K0, 0137V0, 0041D0)
+  // 순수 숫자 6자리 or 영문 혼합 코드 모두 .KS 추가
+  if(/^[0-9][A-Z0-9]{4,6}$/i.test(t))return t+".KS";
   return t;
 }
 async function rsKRQuote(sym){
