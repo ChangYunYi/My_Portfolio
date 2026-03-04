@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#04080f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>2026 Portfolio Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="header">
+  <div class="header-left">
+    <div class="logo">P</div>
+    <div>
+      <h1>2026 Portfolio Dashboard</h1>
+      <div class="header-meta">
+        <span id="rateDisp">₩---/USD</span>
+        <span id="statusBadge" class="bdg bdg-ld">LOADING</span>
+        <span id="loadInfo"></span>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:14px;align-items:center">
+    <button class="refresh-btn" onclick="_countdown=REFRESH_SEC;loadAllSheets()">↻ 새로고침</button>
+    <span id="refreshTimer" style="font-size:10px;color:var(--mute);font-weight:600;min-width:32px">10:00</span>
+    <div style="text-align:right">
+      <div style="font-size:10px;color:var(--sub);font-weight:700">총 자산</div>
+      <div class="total-val" id="grandTotal">---</div>
+    </div>
+  </div>
+</header>
+<div class="wrap">
+  <div class="tabs" id="tabBar"></div>
+  <div id="content"><div class="loader"><div class="spin"></div><div>구글 시트에서 데이터 로딩 중...</div></div></div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/treemap.js"></script>
+<script src="js/app.js"></script>
+<script src="js/risk-sentinel.js"></script>
+</body>
+</html>

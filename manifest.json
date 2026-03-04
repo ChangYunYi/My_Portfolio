@@ -1,0 +1,18 @@
+{
+  "name": "포트폴리오 대시보드",
+  "short_name": "포트폴리오",
+  "description": "실시간 투자 포트폴리오 대시보드",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#04080f",
+  "theme_color": "#04080f",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23091428'/><text x='50' y='62' font-size='50' text-anchor='middle' fill='%234d9aff'>📊</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
