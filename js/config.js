@@ -23,7 +23,6 @@ const TABS = [
   { id: "dividend",  label: "배당",       icon: "💰" },
   { id: "growth",    label: "성장",       icon: "🚀" },
   { id: "kr",        label: "국내",       icon: "🇰🇷" },
-  { id: "us-risk",   label: "미장 Risk",  icon: "🌎" },
 ];
 
 /** ETF 티커 목록 (isETF 판별용) */
