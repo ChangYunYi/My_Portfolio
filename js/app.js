@@ -680,9 +680,14 @@ function renderKR(el) {
 
 /** 국내 종목 테이블 (스파크라인 + 리스크 배지 포함) */
 function _mkKRTable(items) {
-  const heads = ["종목", "", "현재가", "일변동", "수익률", "평가금", "배당률", "BB(20)", "BB(252)", "RSI", "MDD"];
-  return `<div class="tbl-wrap"><table>
-    <thead><tr>${heads.map((h, i) => `<th${i === 0 ? ' style="text-align:left"' : i === 1 ? ' style="text-align:center;width:90px"' : ''}>${h}</th>`).join("")}</tr></thead>
+  const heads = ["종목", "차트", "현재가", "일변동", "수익률", "평가금", "배당률", "BB(20)", "BB(252)", "RSI", "MDD"];
+  return `<div class="tbl-wrap"><table class="kr-tbl">
+    <colgroup>
+      <col style="width:140px"><col style="width:88px"><col style="width:90px"><col style="width:68px">
+      <col style="width:68px"><col style="width:100px"><col style="width:62px">
+      <col style="width:52px"><col style="width:56px"><col style="width:48px"><col style="width:56px">
+    </colgroup>
+    <thead><tr>${heads.map((h, i) => `<th${i === 0 ? ' style="text-align:left"' : i === 1 ? ' style="text-align:center"' : ''}>${h}</th>`).join("")}</tr></thead>
     <tbody>${items.map(h => {
       const cur = h.cur.toLocaleString();
       const val = fK(h.val);
@@ -692,14 +697,14 @@ function _mkKRTable(items) {
       const sid = rsSafeId(h.ticker);
       return `<tr id="krrow_${sid}" style="cursor:pointer;transition:background .3s,box-shadow .3s" data-ticker="${h.ticker}" data-market="kr" data-name="${h.name}" data-type="stock">
         <td style="text-align:left"><div style="font-weight:800;font-size:13px;color:var(--txt)">${h.name}</div><div style="font-size:10px;color:var(--sub)">${h.ticker} · ${h.qty}주</div></td>
-        <td style="text-align:center;position:relative;padding:4px">
-          <div id="krspark_${sid}" style="height:28px;display:flex;align-items:center;justify-content:center">
-            <div style="width:80px;height:20px;border-radius:3px;background:linear-gradient(90deg,var(--s1),var(--s2),var(--s1));background-size:200% 100%;animation:pulse 2s infinite"></div>
+        <td style="text-align:center;position:relative;padding:4px 2px">
+          <div id="krspark_${sid}" style="width:80px;height:26px;margin:0 auto;display:flex;align-items:center;justify-content:center">
+            <div class="kr-spark-placeholder"></div>
           </div>
           <div id="krbadge_${sid}" style="position:absolute;top:0;right:2px"></div>
         </td>
-        <td class="mono"><div>${cur}</div><div style="font-size:10px;color:var(--mute)">${h.avg.toLocaleString()}</div></td>
-        <td><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
+        <td class="mono" id="krprice_${sid}"><div class="kr-cur">${cur}</div><div style="font-size:10px;color:var(--mute)">${h.avg.toLocaleString()}</div></td>
+        <td id="krdaily_${sid}"><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
         <td style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
         <td><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
         <td><span style="color:${h.divY >= 3 ? "var(--green)" : h.divY >= 1 ? "var(--amber)" : "var(--sub)"};font-weight:700;font-size:12px">${h.divY.toFixed(2)}%</span></td>
@@ -711,7 +716,7 @@ function _mkKRTable(items) {
     }).join("")}</tbody></table></div>`;
 }
 
-/** 국내 테이블에 RS 데이터 점진 반영 (스파크라인 + 배지 + 행 발광) */
+/** 국내 테이블에 RS 데이터 점진 반영 (스파크라인 + 배지 + 행 발광 + 실시간 가격) */
 function _updateKRTableRS() {
   if (activeTab !== "kr") return;
   (P.kr || []).forEach(h => {
@@ -721,15 +726,27 @@ function _updateKRTableRS() {
     const sparkEl = document.getElementById("krspark_" + sid);
     const badgeEl = document.getElementById("krbadge_" + sid);
     const row = document.getElementById("krrow_" + sid);
+    const priceEl = document.getElementById("krprice_" + sid);
+    const dailyEl = document.getElementById("krdaily_" + sid);
     if (!sparkEl) return;
 
     // 스파크라인
     if (d?.closes?.length > 2) {
       sparkEl.innerHTML = mkSparkSVG(d.closes, 80, 26);
     } else if (d?.loading) {
-      sparkEl.innerHTML = '<div style="width:80px;height:20px;border-radius:3px;background:linear-gradient(90deg,var(--s1),var(--s2),var(--s1));background-size:200% 100%;animation:pulse 2s infinite"></div>';
+      sparkEl.innerHTML = '<div class="kr-spark-placeholder"></div>';
     } else if (d?.error) {
       sparkEl.innerHTML = '<span style="font-size:8px;color:var(--mute)">—</span>';
+    }
+
+    // 현재가 + 일변동 업데이트 (RS 실시간 데이터)
+    if (d?.loaded && d.price > 0 && priceEl) {
+      const rsPrice = Math.round(d.price);
+      priceEl.querySelector(".kr-cur").textContent = rsPrice.toLocaleString();
+      if (dailyEl && typeof d.changePct === "number") {
+        const chg = d.changePct;
+        dailyEl.innerHTML = `<span class="${bc(chg)}">${fP(chg)}</span>`;
+      }
     }
 
     // 리스크 배지
