@@ -665,15 +665,18 @@ function renderKR(el) {
   const krDiv = P.kr.reduce((s, h) => s + h.val * (h.divY / 100), 0);
   const plp = P.krT.inv > 0 ? ((P.krT.val - P.krT.inv) / P.krT.inv * 100) : 0;
   const mktOpen = _isKRMarketOpen();
-  el.innerHTML = `<div class="section"><div class="grid-3">
-    <div class="card"><div class="topline" style="background:linear-gradient(90deg,var(--amber),transparent)"></div>
-      <div class="lbl">원화 평가금액</div><div class="big">${fK(P.krT.val)}</div>
-      <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
-    <div class="card"><div class="lbl">보유 종목</div><div class="big">${P.kr.length}<span style="font-size:14px;color:var(--sub)"> 종목</span></div>
-      <div style="margin-top:6px;font-size:9px;padding:2px 8px;border-radius:5px;font-weight:700;display:inline-block;background:${mktOpen ? "rgba(46,224,168,0.15)" : "rgba(255,107,120,0.12)"};color:${mktOpen ? "var(--green)" : "var(--red)"}">${mktOpen ? "장중 · 3분 자동갱신" : "장 마감"}</span>
-      <div id="krRiskStatus" style="font-size:9px;color:var(--mute);margin-top:3px"></div></div>
-    <div class="card"><div class="lbl">연간 배당</div><div class="big" style="color:var(--green)">${fK(krDiv)}</div></div></div>
-    <div class="card">${_mkKRTable(P.kr)}</div></div>`;
+  el.innerHTML = `<div class="section">
+    <div class="grid-3">
+      <div class="card"><div class="topline" style="background:linear-gradient(90deg,var(--amber),transparent)"></div>
+        <div class="lbl">원화 평가금액</div><div class="big">${fK(P.krT.val)}</div>
+        <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
+      <div class="card"><div class="lbl">보유 종목</div><div class="big">${P.kr.length}<span style="font-size:14px;color:var(--sub)"> 종목</span></div>
+        <div style="margin-top:6px;font-size:9px;padding:2px 8px;border-radius:5px;font-weight:700;display:inline-block;background:${mktOpen ? "rgba(46,224,168,0.15)" : "rgba(255,107,120,0.12)"};color:${mktOpen ? "var(--green)" : "var(--red)"}">${mktOpen ? "장중 · 3분 자동갱신" : "장 마감"}</span>
+        <div id="krRiskStatus" style="font-size:9px;color:var(--mute);margin-top:3px"></div></div>
+      <div class="card"><div class="lbl">연간 배당</div><div class="big" style="color:var(--green)">${fK(krDiv)}</div></div>
+    </div>
+    <div class="card" style="margin-top:16px">${_mkKRTable(P.kr)}</div>
+  </div>`;
   setTimeout(() => _updateKRTableRS(), 100);
   _startKRTabRefresh();
 }
