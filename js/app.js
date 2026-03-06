@@ -685,26 +685,17 @@ const YAHOO_SYMBOLS = {
 
 let _macroCache = { data: null, ts: 0 };
 
-// ── FRED API fetch ──
-async function _fetchFRED(seriesId) {
+// ── data/macro.json에서 FRED 데이터 로드 (GitHub Actions가 10분마다 갱신) ──
+async function _fetchFREDFromJSON() {
   try {
-    const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=2`;
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 12000);
-    const r = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(tid);
-    if (!r.ok) return null;
+    const r = await fetch("data/macro.json?" + Date.now(), { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return {};
     const j = await r.json();
-    const obs = j?.observations?.filter(o => o.value !== ".");
-    if (!obs?.length) return null;
-    const cur = { value: parseFloat(obs[0].value), date: obs[0].date };
-    const prev = obs.length > 1 ? { value: parseFloat(obs[1].value), date: obs[1].date } : null;
-    const chg = prev ? cur.value - prev.value : null;
-    return { ...cur, prev: prev?.value, chg };
-  } catch { return null; }
+    return j?.series || {};
+  } catch { return {}; }
 }
 
-// ── Yahoo Finance fetch (보조) ──
+// ── Yahoo Finance fetch (보조 — 실시간 시세) ──
 async function _fetchYahooQuote(sym) {
   const u = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d&includePrePost=false`;
   for (const p of [
@@ -733,17 +724,16 @@ async function _fetchYahooQuote(sym) {
 // ── 전체 매크로 데이터 로드 ──
 async function fetchMacroIndicators() {
   if (_macroCache.data && Date.now() - _macroCache.ts < 300000) return _macroCache.data;
-  const results = {};
 
-  // FRED 병렬 fetch
-  const fredKeys = Object.keys(FRED_SERIES);
-  const fredFetches = fredKeys.map(async k => { results[k] = await _fetchFRED(k); });
+  // FRED 데이터는 정적 JSON에서 로드
+  const fredData = await _fetchFREDFromJSON();
 
-  // Yahoo 병렬 fetch
+  // Yahoo 보조 데이터는 실시간 fetch
+  const results = { ...fredData };
   const yahooKeys = Object.keys(YAHOO_SYMBOLS);
   const yahooFetches = yahooKeys.map(async k => { results["Y_" + k] = await _fetchYahooQuote(YAHOO_SYMBOLS[k].sym); });
+  await Promise.allSettled(yahooFetches);
 
-  await Promise.allSettled([...fredFetches, ...yahooFetches]);
   _macroCache = { data: results, ts: Date.now() };
   return results;
 }

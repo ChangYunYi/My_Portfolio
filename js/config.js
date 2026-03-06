@@ -44,8 +44,7 @@ const LINE_COLORS = [
 /** Finnhub API 키 (Risk Sentinel 실시간 시세 조회용) */
 const FHKEY = "d6jpur9r01qkvh5qt67gd6jpur9r01qkvh5qt680";
 
-/** FRED API 키 (매크로 리스크 지표 조회용) */
-const FRED_KEY = "b6fdaa9f478ab37e784e7e15ec9cca49";
+/** FRED API 키는 GitHub Actions Secrets에 저장 (FRED_API_KEY) */
 
 /** CORS 프록시 (stock.html 뉴스 RSS 등) */
 const PROXY = "https://api.allorigins.win/raw?url=";
