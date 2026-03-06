@@ -102,14 +102,14 @@ mg.innerHTML = IS_ETF
    ═══════════════════════════════════════════════════════ */
 
 const tabs = IS_ETF
-  ? [{ id: "Chart", l: "📈 주가" }, { id: "Holdings", l: "📦 보유종목" }, { id: "News", l: "📰 뉴스" }]
-  : [{ id: "Chart", l: "📈 주가" }, { id: "Financial", l: "📊 재무" }, { id: "News", l: "📰 뉴스" }];
+  ? [{ id: "Chart", l: "📈 주가" }, { id: "Holdings", l: "📦 보유종목" }, { id: "Risk", l: "⚠ 리스크" }, { id: "News", l: "📰 뉴스" }]
+  : [{ id: "Chart", l: "📈 주가" }, { id: "Financial", l: "📊 재무" }, { id: "Risk", l: "⚠ 리스크" }, { id: "News", l: "📰 뉴스" }];
 
 document.getElementById("detailTabs").innerHTML = tabs.map((t, i) =>
   '<button class="' + (i === 0 ? "active" : "") + '" onclick="showTab(\'' + t.id + '\')">' + t.l + "</button>"
 ).join("");
 
-let _hL = 0, _fL = 0, _nL = 0;
+let _hL = 0, _fL = 0, _nL = 0, _rL = 0;
 function showTab(id) {
   tabs.forEach(t => {
     const p = document.getElementById("panel" + t.id);
@@ -119,6 +119,7 @@ function showTab(id) {
   if (id === "Holdings" && !_hL) { _hL = 1; loadHoldings(); }
   if (id === "Financial" && !_fL) { _fL = 1; loadFinancials(); }
   if (id === "News" && !_nL) { _nL = 1; loadNews(); }
+  if (id === "Risk" && !_rL) { _rL = 1; loadRisk(); }
 }
 
 document.querySelectorAll(".period-btn").forEach(b => {
@@ -454,6 +455,131 @@ function correctTopEPS() {
     console.log("[FIX] 상단 EPS 보정 완료: " + _rawEPS + " → " + corrected.toFixed(2));
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   리스크 탭 — 부모 윈도우의 RS_US 데이터 활용
+   ═══════════════════════════════════════════════════════ */
+
+function _getParentRS() {
+  try { if (window.opener && window.opener.RS_US) return window.opener; } catch {}
+  try { if (window.parent && window.parent !== window && window.parent.RS_US) return window.parent; } catch {}
+  return null;
+}
+
+function _getParentP() {
+  try { if (window.opener && window.opener.P) return window.opener.P; } catch {}
+  try { if (window.parent && window.parent !== window && window.parent.P) return window.parent.P; } catch {}
+  return null;
+}
+
+function loadRisk() {
+  const el = document.getElementById("riskContent");
+  const parent = _getParentRS();
+  if (!parent) {
+    el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--sub);font-size:12px">리스크 데이터를 불러올 수 없습니다.<br><span style="font-size:10px;color:var(--mute)">메인 대시보드에서 종목을 클릭해주세요.</span></div>';
+    return;
+  }
+
+  const d = parent.RS_US.data[TICKER];
+  const prt = _getParentP();
+  const portItem = prt ? [...(prt.index || []), ...(prt.dividend || []), ...(prt.growth || [])].find(h => h.ticker === TICKER) || {} : {};
+
+  if (!d || (!d.loaded && !d.loading)) {
+    el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--amber);font-size:12px">📡 리스크 데이터 대기 중...<br><span style="font-size:10px;color:var(--mute)">백그라운드에서 분석이 진행됩니다.</span></div>';
+    setTimeout(loadRisk, 3000);
+    _rL = 0;
+    return;
+  }
+
+  if (d.loading) {
+    el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--amber);font-size:12px"><span class="rs-dot-load"></span> 분석중...</div>';
+    setTimeout(loadRisk, 2000);
+    _rL = 0;
+    return;
+  }
+
+  const price = d.price;
+  const up = (d.changePct || 0) >= 0;
+  const clr = up ? "var(--green)" : "var(--red)";
+  const pFmt = v => "$" + v.toFixed(2);
+  const sFmt = v => "$" + v.toFixed(0);
+  const ind = d.ind || {};
+  const rsiColor = ind.rsi >= 70 ? "#ef4444" : ind.rsi <= 30 ? "#2ee0a8" : "var(--txt2)";
+  const sevColor = { critical: "#ef4444", high: "#f97316", medium: "#eab308", low: "#2ee0a8" };
+  const sevLabel = { critical: "CRITICAL", high: "HIGH", medium: "MEDIUM", low: "LOW" };
+
+  // 차트 영역
+  let chartHTML = '';
+  if (d.closes?.length > 20) {
+    try {
+      chartHTML = parent.mkBigChartSVG(d.closes, d.ind, d.ind?.bb, 560, 175, sFmt);
+    } catch { chartHTML = ''; }
+  }
+
+  // 리스크 신호
+  const risks = d.risks || [];
+  const riskHTML = risks.length > 0
+    ? '<div style="font-size:11px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:8px">⚠ 감지된 리스크 신호 (' + risks.length + '개)</div>' +
+      risks.map(r => '<div class="rs-risk-row" style="border-left:3px solid ' + (sevColor[r.sev] || "#334155") + '"><span style="font-size:8px;font-weight:800;color:' + (sevColor[r.sev]) + ';min-width:54px">' + (sevLabel[r.sev]) + '</span><span style="font-size:12px;color:var(--txt2)">' + r.msg + '</span></div>').join("")
+    : '<div style="padding:12px 14px;background:rgba(46,224,168,.07);border-radius:8px;border:1px solid rgba(46,224,168,.18);color:var(--green);font-size:12px;font-weight:700;text-align:center">✓ 현재 감지된 리스크 신호 없음</div>';
+
+  // 지표 셀
+  function ic(label, val, color) {
+    return '<div class="rs-ind-cell"><div class="rs-ind-label">' + label + '</div><div class="rs-ind-val" style="color:' + (color || "var(--txt2)") + '">' + (val != null ? val : "—") + '</div></div>';
+  }
+
+  el.innerHTML = `
+    ${chartHTML ? `
+    <div class="card" style="margin-bottom:12px">
+      <div class="lbl" style="margin-bottom:8px">기술적 차트 (2년 일봉)</div>
+      <div style="background:var(--s1);border-radius:10px;padding:12px 8px 6px;border:1px solid var(--bdr)">
+        ${chartHTML}
+        <div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">
+          ${[["50D", "#4d9aff"], ["100D", "#ae82ff"], ["200D", "#ffc05c"], ["300D", "#ff6bb5"], ["BB", "#eab308"]].map(x => '<div style="display:flex;align-items:center;gap:4px"><div style="width:14px;height:2px;background:' + x[1] + ';opacity:.8"></div><span style="font-size:8px;color:var(--mute)">' + x[0] + '</span></div>').join("")}
+        </div>
+      </div>
+    </div>` : ""}
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="lbl" style="margin-bottom:8px">리스크 신호</div>
+      ${riskHTML}
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="lbl" style="margin-bottom:8px">기술적 지표</div>
+      <div class="rs-ind-grid">
+        ${ic("현재가", price ? pFmt(price) : null, clr)}
+        ${ic("전일종가", d.prevClose ? pFmt(d.prevClose) : null, "var(--sub)")}
+        ${ic("RSI(14)", ind.rsi != null ? ind.rsi.toFixed(1) : null, rsiColor)}
+        ${ic("50일선", ind.ma50 != null ? sFmt(ind.ma50) : null, "#4d9aff")}
+        ${ic("100일선", ind.ma100 != null ? sFmt(ind.ma100) : null, "#ae82ff")}
+        ${ic("200일선", ind.ma200 != null ? sFmt(ind.ma200) : null, "#ffc05c")}
+        ${ic("300일선", ind.ma300 != null ? sFmt(ind.ma300) : null, "#ff6bb5")}
+        ${ic("BB상단", ind.bb?.upper != null ? sFmt(ind.bb.upper) : null, "#eab308")}
+        ${ic("BB중심", ind.bb?.middle != null ? sFmt(ind.bb.middle) : null, "#eab308")}
+        ${ic("BB하단", ind.bb?.lower != null ? sFmt(ind.bb.lower) : null, "#eab308")}
+      </div>
+    </div>
+
+    ${portItem.qty ? `
+    <div class="card">
+      <div class="lbl" style="margin-bottom:8px">포트폴리오 현황</div>
+      <div class="rs-port-grid">
+        ${[
+          { l: "보유수량", v: portItem.qty % 1 ? portItem.qty.toFixed(2) + "주" : portItem.qty + "주", c: "var(--txt)" },
+          { l: "평균단가", v: portItem.avg ? pFmt(portItem.avg) : "—", c: "var(--sub)" },
+          { l: "수익률", v: portItem.plp != null ? fP(portItem.plp) : "—", c: portItem.plp >= 0 ? "var(--green)" : "var(--red)" },
+          { l: "배당수익률", v: portItem.divY > 0 ? portItem.divY.toFixed(2) + "%" : "—", c: "var(--green)" },
+          { l: "MDD", v: portItem.mdd != null ? portItem.mdd.toFixed(1) + "%" : "—", c: Math.abs(portItem.mdd || 0) >= 10 ? "var(--red)" : "var(--green)" },
+        ].map(x => '<div class="rs-port-cell"><div style="font-size:8px;color:var(--mute);font-weight:700;margin-bottom:4px">' + x.l + '</div><div style="font-size:13px;font-weight:800;color:' + x.c + '">' + x.v + '</div></div>').join("")}
+      </div>
+    </div>` : ""}
+
+    <div style="margin-top:12px;text-align:center;font-size:9px;color:var(--mute)">
+      ${d.loadedAt ? "마지막 업데이트: " + new Date(d.loadedAt).toLocaleString("ko-KR") : "데이터 미수신"}
+    </div>`;
+}
+
 
 // ── 시작 ──
 console.log("=== STOCK DETAIL (Cache) ===", TICKER, STYPE);
