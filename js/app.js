@@ -200,17 +200,9 @@ function switchTab(id) {
   const el = document.getElementById("content");
   const renderers = {
     overview: renderOverview, index: renderIndex, dividend: renderDividend,
-    growth: renderGrowth, kr: renderKR,
-    "us-risk": renderUSRisk
+    growth: renderGrowth, kr: renderKR
   };
   renderers[id]?.(el);
-
-  // 리스크 탭 진입 시 3분 자동 리프레쉬 시작, 이탈 시 정지
-  if (id === "us-risk") {
-    _startRiskTabRefresh();
-  } else {
-    _stopRiskTabRefresh();
-  }
 
   // 국내 탭 이탈 시 KR 리프레쉬 정지
   if (id !== "kr") {
@@ -413,69 +405,6 @@ function mkPriceTrendChart(canvasId, tickerList) {
       plugins: {
         legend: { labels: { color: "#9db5d4", font: { size: 11 } } },
         tooltip: { callbacks: { label: ctx => ctx.dataset.label + ": " + ctx.raw?.toFixed(2) + "%" } }
-      }
-    }
-  });
-}
-
-/** RS 종목 카드 HTML 생성 */
-function mkRSCard(h, isKR, accentColor) {
-  const sid = rsSafeId(h.ticker);
-  const dispTicker = h.ticker.startsWith("KRX:") ? h.ticker.replace("KRX:", "") : h.ticker;
-  return `<div class="rs-mon-card" id="rscard_${sid}" onclick="rsShowDetail('${h.ticker}',${isKR})">
-    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,${accentColor},transparent)"></div>
-    <div id="rscnt_${sid}" class="rs-cnt-badge rs-cnt-wait">—</div>
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;padding-right:22px">
-      <div style="min-width:0;flex:1">
-        <div style="font-size:12px;font-weight:800;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${h.name}">${h.name.length > 10 ? h.name.slice(0, 10) + '…' : h.name}</div>
-        <div style="font-size:9px;color:var(--sub);margin-top:1px">${dispTicker}</div>
-      </div>
-      <div id="rscardprice_${sid}" style="text-align:right;flex-shrink:0">
-        <div style="font-size:10px;color:var(--mute);font-family:monospace">—</div>
-      </div>
-    </div>
-    <div id="rscardpark_${sid}" style="margin:5px 0 3px"><div class="rs-spark-ph"></div></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px">
-      <div id="rscardbadge_${sid}" style="flex:1;min-height:14px">
-        <span style="font-size:8px;color:var(--mute)">대기중...</span>
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:8px;color:var(--mute)">배당 <span style="color:var(--green);font-weight:700">${h.divY > 0 ? h.divY.toFixed(1) + "%" : "—"}</span></div>
-      </div>
-    </div>
-  </div>`;
-}
-
-/** 리스크 차트 공통 렌더러 */
-function _renderRiskChart(canvasId, stocks, isKR) {
-  const riskData = stocks.filter(h => h.rsi > 0 || h.bb20 || h.bb252 || h.mdd !== 0).sort((a, b) => b.val - a.val);
-  if (!riskData.length) return;
-  const labels = riskData.map(h => isKR ? h.name.slice(0, 6) : h.ticker || h.name.slice(0, 6));
-  const cid = canvasId.replace("chUS", "usRisk").replace("chKR", "krRisk");
-  charts[cid] = new Chart(document.getElementById(canvasId), {
-    type: "bar",
-    data: {
-      labels, datasets: [
-        { label: "RSI", data: riskData.map(h => h.rsi || null), backgroundColor: "#4d9affbb", borderRadius: 4, maxBarThickness: 20, yAxisID: "yL", order: 2 },
-        { label: "BB(20)", data: riskData.map(h => h.bb20 || null), backgroundColor: "#2ee0a8bb", borderRadius: 4, maxBarThickness: 20, yAxisID: "yL", order: 2 },
-        { label: "BB(252)", data: riskData.map(h => h.bb252 || null), backgroundColor: "#ae82ffbb", borderRadius: 4, maxBarThickness: 20, yAxisID: "yL", order: 2 },
-        {
-          label: "MDD%", data: riskData.map(h => h.mdd || null), type: "line", borderColor: "#ff6b78", backgroundColor: "#ff6b7820",
-          pointBackgroundColor: riskData.map(h => Math.abs(h.mdd) >= 10 ? "#ff6b78" : Math.abs(h.mdd) >= 5 ? "#ffc05c" : "#2ee0a8"),
-          pointRadius: 5, pointHoverRadius: 7, borderWidth: 2, tension: 0.3, fill: true, yAxisID: "yR", order: 1
-        }
-      ]
-    },
-    options: {
-      responsive: true, interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { labels: { color: "#f2f6ff", font: { size: 11, weight: "bold" }, usePointStyle: true, padding: 14 } },
-        tooltip: { callbacks: { label: ctx => { const v = ctx.raw; if (v == null) return null; return `${ctx.dataset.label}: ${ctx.dataset.label === "MDD%" ? v.toFixed(2) + "%" : v.toFixed(0)}`; } } }
-      },
-      scales: {
-        x: { ticks: { color: "#9db5d4", font: { size: 10, weight: "bold" }, maxRotation: 45 }, grid: { display: false } },
-        yL: { position: "left", min: 0, max: 120, title: { display: true, text: "RSI/BB", color: "#5e82a8", font: { size: 10 } }, ticks: { color: "#5e82a8", font: { size: 10 }, stepSize: 20 }, grid: { color: "#1f3a6218" }, afterDataLimits: s => { s.max = 120; } },
-        yR: { position: "right", title: { display: true, text: "MDD%", color: "#ff6b78", font: { size: 10 } }, ticks: { color: "#ff6b78", font: { size: 10 }, callback: v => v.toFixed(0) + "%" }, grid: { display: false } }
       }
     }
   });
@@ -1362,22 +1291,6 @@ function _renderMacroCharts(data) {
 }
 
 
-/* ═══════════════════════════════════════════════════════
-   시장 운영시간 감지 & 리스크탭 3분 자동 새로고침
-   ═══════════════════════════════════════════════════════ */
-
-function _isUSMarketOpen() {
-  // 미국 동부시간(ET) 기준 월~금 09:30~16:00
-  // 한국시간(KST) = ET + 14시간 (서머타임시 +13)
-  const now = new Date();
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  const et = new Date(utc - 5 * 3600000); // EST (대략적)
-  const day = et.getDay();
-  if (day === 0 || day === 6) return false;
-  const hm = et.getHours() * 100 + et.getMinutes();
-  return hm >= 930 && hm <= 1600;
-}
-
 function _isKRMarketOpen() {
   // 한국시간(KST) 기준 월~금 09:00~15:30
   const now = new Date();
@@ -1388,69 +1301,6 @@ function _isKRMarketOpen() {
   const hm = kst.getHours() * 100 + kst.getMinutes();
   return hm >= 900 && hm <= 1530;
 }
-
-let _riskRefreshTimer = null;
-
-function _startRiskTabRefresh() {
-  _stopRiskTabRefresh();
-  _riskRefreshTimer = setInterval(() => {
-    if (activeTab === "us-risk") {
-      if (_isUSMarketOpen()) {
-        console.log("[Risk] 미장 열림 → 리스크 데이터 리프레쉬");
-        rsLoadUS();
-      } else {
-        console.log("[Risk] 미장 마감 → 리프레쉬 스킵");
-      }
-    }
-  }, 180000); // 3분
-}
-
-function _stopRiskTabRefresh() {
-  if (_riskRefreshTimer) { clearInterval(_riskRefreshTimer); _riskRefreshTimer = null; }
-}
-
-/* ═══════════════════════════════════════════════════════
-   렌더러 — 미장 Risk / 국장 Risk
-   ═══════════════════════════════════════════════════════ */
-
-function renderUSRisk(el) {
-  const usStocks = [...P.index, ...P.dividend, ...P.growth].filter(h => h.ticker);
-  const sectors = [
-    { label: "지수형 INDEX", color: "var(--blue)", icon: "📊", items: P.index },
-    { label: "배당형 DIVIDEND", color: "var(--green)", icon: "💰", items: P.dividend },
-    { label: "성장주 GROWTH", color: "var(--purple)", icon: "🚀", items: P.growth },
-  ];
-  const mktOpen = _isUSMarketOpen();
-
-  el.innerHTML = `<div class="section">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:10px 16px;background:var(--s1);border-radius:11px;border:1px solid var(--bdr)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:16px">🌎</span>
-        <span style="font-size:13px;font-weight:800;color:var(--txt)">미국 시장 실시간 리스크 모니터</span>
-        <span style="font-size:10px;color:var(--mute)">${usStocks.length}개 종목</span>
-        <span style="font-size:9px;padding:2px 8px;border-radius:5px;font-weight:700;background:${mktOpen ? "rgba(46,224,168,0.15)" : "rgba(255,107,120,0.12)"};color:${mktOpen ? "var(--green)" : "var(--red)"}">${mktOpen ? "장 운영중 · 3분 자동갱신" : "장 마감 · 갱신 중지"}</span>
-      </div>
-      <div id="rsStatusUS" style="display:flex;align-items:center;gap:6px">
-        <span class="rs-dot-load"></span>
-        <span style="font-size:9px;color:var(--mute)">초기화 중...</span>
-      </div>
-    </div>
-    ${sectors.map(sec => `
-    <div style="margin-bottom:18px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
-        <span style="font-size:14px">${sec.icon}</span>
-        <span style="font-size:12px;font-weight:800;color:${sec.color};letter-spacing:0.5px">${sec.label}</span>
-        <div style="flex:1;height:1px;background:linear-gradient(90deg,${sec.color}30,transparent)"></div>
-        <span id="rsSecAlert_${rsSafeId(sec.label)}" style="font-size:10px;color:var(--mute)"></span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">
-        ${sec.items.filter(h => h.ticker).map(h => mkRSCard(h, false, sec.color)).join("")}
-      </div>
-    </div>`).join("")}
-  </div>`;
-  setTimeout(() => rsUpdateMonitor("us"), 0);
-}
-
 
 /* ═══════════════════════════════════════════════════════
    자동 새로고침 + 리사이즈 + 초기화

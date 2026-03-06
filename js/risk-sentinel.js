@@ -276,7 +276,6 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   if (isKR) {
     if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
   } else {
-    if (activeTab === "us-risk") rsUpdateMonitor(mkt);
     if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
   }
 }
@@ -292,7 +291,6 @@ async function rsLoadUS() {
   RS_US.status.loading = false;
   RS_US.status.lastUp = new Date();
   rsUpdateStatus("us");
-  if (activeTab === "us-risk") rsUpdateMonitor("us");
   if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
 }
 
@@ -326,22 +324,38 @@ async function startRSSentinel() {
   const [cachedUS, cachedKR] = await Promise.all([rsDbGetAll("rsUS"), rsDbGetAll("rsKR")]);
   cachedUS.forEach(r => { if (r.k && r.v?.loaded) RS_US.data[r.k] = r.v; });
   cachedKR.forEach(r => { if (r.k && r.v?.loaded) RS_KR.data[r.k] = r.v; });
-  if (activeTab === "us-risk") rsUpdateMonitor("us");
   if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
 
   // 양쪽 동시 백그라운드 로딩
   rsLoadUS();
   rsLoadKR();
 
-  // 60초마다 자동 갱신 (2초 오프셋으로 API 충돌 방지)
-  setInterval(rsLoadUS, 60000);
-  setInterval(rsLoadKR, 62000);
+  // 장중 3분 / 장외 30분 적응형 갱신
+  setInterval(() => {
+    const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    // 미장: ET 기준 월~금 09:30~16:00
+    const et = new Date(utc - 5 * 3600000);
+    const usOpen = et.getDay() >= 1 && et.getDay() <= 5 && (et.getHours() * 100 + et.getMinutes()) >= 930 && (et.getHours() * 100 + et.getMinutes()) <= 1600;
+    if (usOpen || !RS_US._lastLoad || (Date.now() - RS_US._lastLoad >= 1800000)) {
+      RS_US._lastLoad = Date.now();
+      rsLoadUS();
+    }
+  }, 180000);
+  setInterval(() => {
+    const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    // 한장: KST 기준 월~금 09:00~15:30
+    const kst = new Date(utc + 9 * 3600000);
+    const krOpen = kst.getDay() >= 1 && kst.getDay() <= 5 && (kst.getHours() * 100 + kst.getMinutes()) >= 900 && (kst.getHours() * 100 + kst.getMinutes()) <= 1530;
+    if (krOpen || !RS_KR._lastLoad || (Date.now() - RS_KR._lastLoad >= 1800000)) {
+      RS_KR._lastLoad = Date.now();
+      rsLoadKR();
+    }
+  }, 182000);
 
   // 8초마다 UI 점진적 갱신
   setInterval(() => {
     rsUpdateStatus("us");
     rsUpdateStatus("kr");
-    if (activeTab === "us-risk") rsUpdateMonitor("us");
     if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
     if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
   }, 8000);
@@ -397,93 +411,6 @@ function mkRiskBadgesHTML(risks) {
   return risks.slice(0, 2).map(r =>
     `<span class="rs-badge ${cls[r.sev] || 'rs-med'}">${r.msg.length > 13 ? r.msg.slice(0, 13) + "…" : r.msg}</span>`
   ).join("") + (risks.length > 2 ? `<span style="font-size:7px;color:var(--mute)"> +${risks.length - 2}</span>` : "");
-}
-
-
-/* ═══════════════════════════════════════════════════════
-   UI — 카드 DOM 업데이트 (미장/국장 공통)
-   ═══════════════════════════════════════════════════════ */
-
-function rsUpdateMonitor(mkt) {
-  const isUS = mkt === "us";
-  const store = isUS ? RS_US : RS_KR;
-  const priceFmt = isUS ? (v => "$" + v.toFixed(2)) : (v => "₩" + Math.round(v).toLocaleString("ko-KR"));
-  const stocks = isUS ? [...P.index, ...P.dividend, ...P.growth] : P.kr || [];
-
-  // 섹터별 리스크 카운트 배지
-  if (isUS) {
-    [{ label: "지수형 INDEX", items: P.index }, { label: "배당형 DIVIDEND", items: P.dividend }, { label: "성장주 GROWTH", items: P.growth }].forEach(sec => {
-      const cnt = sec.items.filter(h => h.ticker).reduce((s, h) => s + (RS_US.data[h.ticker]?.risks?.length || 0), 0);
-      const el = document.getElementById("rsSecAlert_" + rsSafeId(sec.label));
-      if (el) el.innerHTML = cnt > 0 ? `<span class="rs-badge rs-crit">${cnt} risks</span>` : "";
-    });
-  } else {
-    KR_SECTORS.forEach(sec => {
-      const cnt = sec.tickers
-        .map(t => P.kr?.find(h => h.ticker && h.ticker.replace(/\.(KS|KQ)$/i, "").toUpperCase() === t.toUpperCase()))
-        .filter(Boolean)
-        .reduce((s, h) => s + (RS_KR.data[h.ticker]?.risks?.length || 0), 0);
-      const el = document.getElementById("rsSecAlert_" + rsSafeId(sec.label));
-      if (el) el.innerHTML = cnt > 0 ? `<span class="rs-badge rs-crit">${cnt} risks</span>` : "";
-    });
-  }
-
-  rsUpdateStatus(mkt);
-
-  // 각 카드 업데이트
-  stocks.filter(h => h.ticker).forEach(h => {
-    const d = store.data[h.ticker];
-    const sid = rsSafeId(h.ticker);
-    const card = document.getElementById("rscard_" + sid);
-    if (!card) return;
-
-    // 숫자 배지
-    const cntEl = document.getElementById("rscnt_" + sid);
-    if (cntEl) {
-      const cnt = d?.risks?.length || 0;
-      if (!d || (!d.loaded && !d.error)) {
-        cntEl.className = "rs-cnt-badge rs-cnt-wait"; cntEl.textContent = "—";
-      } else if (cnt > 0) {
-        cntEl.className = "rs-cnt-badge rs-cnt-risk"; cntEl.textContent = cnt;
-      } else {
-        cntEl.className = "rs-cnt-badge rs-cnt-ok"; cntEl.textContent = "✓";
-      }
-    }
-
-    // 리스크 유무에 따른 카드 스타일
-    const hasRisk = d?.risks?.length > 0;
-    const maxSev = d?.risks?.reduce((m, r) => {
-      const o = { critical: 3, high: 2, medium: 1 };
-      return (o[r.sev] || 0) > (o[m] || 0) ? r.sev : m;
-    }, "");
-    const sevColor = { critical: "#ef4444", high: "#f97316", medium: "#eab308" }[maxSev] || (isUS ? "var(--blue)" : "var(--amber)");
-    if (hasRisk) card.classList.add("rs-alert");
-    else card.classList.remove("rs-alert");
-    const topLine = card.querySelector("div[style*='height:2px']");
-    if (topLine) topLine.style.background = `linear-gradient(90deg,transparent,${sevColor},transparent)`;
-
-    // 가격
-    const priceEl = document.getElementById("rscardprice_" + sid);
-    if (priceEl && d?.price) {
-      const up = (d.changePct || 0) >= 0, clr = up ? "var(--green)" : "var(--red)";
-      priceEl.innerHTML = `<div style="font-size:12px;font-weight:800;color:${clr};font-family:monospace;line-height:1.2">${priceFmt(d.price)}</div><div style="font-size:8px;color:${clr};font-weight:700">${up ? "▲" : "▼"}${Math.abs(d.changePct || 0).toFixed(2)}%</div>`;
-    }
-
-    // 스파크라인
-    const sparkEl = document.getElementById("rscardpark_" + sid);
-    if (sparkEl) {
-      if (d?.closes?.length > 2) sparkEl.innerHTML = mkSparkSVG(d.closes, 160, 28);
-      else if (!d || d.loading) sparkEl.innerHTML = '<div class="rs-spark-ph" style="height:28px"></div>';
-    }
-
-    // 배지
-    const badgeEl = document.getElementById("rscardbadge_" + sid);
-    if (badgeEl) {
-      if (d?.loaded) badgeEl.innerHTML = d.risks?.length ? mkRiskBadgesHTML(d.risks) : '<span style="font-size:8px;color:var(--green);font-weight:700">✓ 신호 없음</span>';
-      else if (d?.loading) badgeEl.innerHTML = '<span style="font-size:8px;color:var(--mute)">로딩 중...</span>';
-      else if (d?.error) badgeEl.innerHTML = '<span style="font-size:8px;color:var(--red)">데이터 없음</span>';
-    }
-  });
 }
 
 
