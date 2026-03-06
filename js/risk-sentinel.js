@@ -156,7 +156,13 @@ function rsKRTicker(t) {
 async function rsKRQuote(sym) {
   for (const sfx of [sym, sym.replace(".KS", ".KQ")]) {
     const j = await rsYahooFetch(sfx, "1d", "5m");
-    if (j) { const q = rsParseQuote(j); if (q?.c) return q; }
+    if (j) {
+      const q = rsParseQuote(j);
+      if (q?.c) {
+        q.intraday = rsParseCandles(j);
+        return q;
+      }
+    }
   }
   return null;
 }
@@ -260,7 +266,8 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   store.data[portTicker] = {
     loading: false, loaded: true, loadedAt: Date.now(),
     price: pr, prevClose, changePct: prevClose > 0 ? ((pr - prevClose) / prevClose) * 100 : 0,
-    closes: hasC ? cl : null, ind, risks: rsFindRisks(pr, prevClose, ind)
+    closes: hasC ? cl : null, intraday: (isKR && q.intraday?.length > 2) ? q.intraday : null,
+    ind, risks: rsFindRisks(pr, prevClose, ind)
   };
   store.status.loaded++;
   rsDbPut(dbStore, portTicker, store.data[portTicker]);
