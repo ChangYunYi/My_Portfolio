@@ -102,8 +102,8 @@ mg.innerHTML = IS_ETF
    ═══════════════════════════════════════════════════════ */
 
 const tabs = IS_ETF
-  ? [{ id: "Chart", l: "📈 주가" }, { id: "Holdings", l: "📦 보유종목" }, { id: "Risk", l: "⚠ 리스크" }, { id: "News", l: "📰 뉴스" }]
-  : [{ id: "Chart", l: "📈 주가" }, { id: "Financial", l: "📊 재무" }, { id: "Risk", l: "⚠ 리스크" }, { id: "News", l: "📰 뉴스" }];
+  ? [{ id: "Risk", l: "⚠ 리스크" }, { id: "Holdings", l: "📦 보유종목" }, { id: "News", l: "📰 뉴스" }]
+  : [{ id: "Risk", l: "⚠ 리스크" }, { id: "Financial", l: "📊 재무" }, { id: "News", l: "📰 뉴스" }];
 
 document.getElementById("detailTabs").innerHTML = tabs.map((t, i) =>
   '<button class="' + (i === 0 ? "active" : "") + '" onclick="showTab(\'' + t.id + '\')">' + t.l + "</button>"
@@ -502,7 +502,7 @@ function _getParentP() {
 function _mkRiskChart(closes, ind, bb, w, h) {
   w = w || 560; h = h || 175;
   if (!closes || closes.length < 5) return '';
-  var d = closes.slice(-90);
+  var d = closes.slice(-252);
   var fS = function(v) { return "$" + v.toFixed(0); };
 
   var maOnly = {};
@@ -630,7 +630,7 @@ async function loadRisk() {
   }
 
   el.innerHTML =
-    (chartHTML ? '<div class="card" style="margin-bottom:12px"><div class="lbl" style="margin-bottom:8px">기술적 차트 (2년 일봉)</div><div style="background:var(--s1);border-radius:10px;padding:12px 8px 6px;border:1px solid var(--bdr)">' + chartHTML +
+    (chartHTML ? '<div class="card" style="margin-bottom:12px"><div class="lbl" style="margin-bottom:8px">기술적 차트 (1년 일봉)</div><div style="background:var(--s1);border-radius:10px;padding:12px 8px 6px;border:1px solid var(--bdr)">' + chartHTML +
       '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap">' +
       [["50D", "#4d9aff"], ["100D", "#ae82ff"], ["200D", "#ffc05c"], ["300D", "#ff6bb5"], ["BB", "#eab308"]].map(function(x) { return '<div style="display:flex;align-items:center;gap:4px"><div style="width:14px;height:2px;background:' + x[1] + ';opacity:.8"></div><span style="font-size:8px;color:var(--mute)">' + x[0] + '</span></div>'; }).join("") +
       '</div></div></div>' : "") +
@@ -669,3 +669,5 @@ async function loadRisk() {
 // ── 시작 ──
 console.log("=== STOCK DETAIL (Cache) ===", TICKER, STYPE);
 Promise.all([loadMetrics(), loadPrices()]).then(() => correctTopEPS());
+// Risk 탭을 기본으로 표시
+showTab("Risk");

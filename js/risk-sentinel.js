@@ -494,7 +494,7 @@ function rsUpdateMonitor(mkt) {
 function mkBigChartSVG(closes, maLines, bb, w, h, fmtShort) {
   w = w || 560; h = h || 180;
   if (!closes || closes.length < 5) return '<div style="text-align:center;padding:40px;color:var(--mute);font-size:12px">차트 데이터 없음</div>';
-  const d = closes.slice(-90);
+  const d = closes.slice(-252);
 
   // ma키 숫자값만 추출 (rsi/bb 오브젝트 제외)
   const maOnly = {};
