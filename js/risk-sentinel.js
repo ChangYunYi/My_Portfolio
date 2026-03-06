@@ -101,6 +101,23 @@ function rsParseCandles(j) {
   } catch { return null; }
 }
 
+/** OHLCV 전체 파싱 — 기술적 지표 계산용 */
+function rsParseOHLCV(j) {
+  try {
+    const r = j?.chart?.result?.[0];
+    if (!r) return null;
+    const q = r.indicators?.quote?.[0];
+    if (!q) return null;
+    const len = q.close?.length || 0;
+    const bars = [];
+    for (let i = 0; i < len; i++) {
+      const c = q.close?.[i], h = q.high?.[i], l = q.low?.[i], o = q.open?.[i], v = q.volume?.[i];
+      if (c != null && !isNaN(c)) bars.push({ o: o || c, h: h || c, l: l || c, c, v: v || 0 });
+    }
+    return bars.length > 20 ? bars : null;
+  } catch { return null; }
+}
+
 function rsParseQuote(j) {
   try {
     const r = j?.chart?.result?.[0];
@@ -140,7 +157,8 @@ async function rsUSQuote(sym) {
 
 async function rsUSCandles(sym) {
   const j = await rsYahooFetch(sym, "2y", "1d");
-  return j ? rsParseCandles(j) : null;
+  if (!j) return { closes: null, ohlcv: null };
+  return { closes: rsParseCandles(j), ohlcv: rsParseOHLCV(j) };
 }
 
 /** KR 티커를 Yahoo 심볼로 변환 (예: "426030" → "426030.KS") */
@@ -170,9 +188,12 @@ async function rsKRQuote(sym) {
 async function rsKRCandles(sym) {
   for (const sfx of [sym, sym.replace(".KS", ".KQ")]) {
     const j = await rsYahooFetch(sfx, "2y", "1d");
-    if (j) { const c = rsParseCandles(j); if (c?.length > 20) return c; }
+    if (j) {
+      const c = rsParseCandles(j);
+      if (c?.length > 20) return { closes: c, ohlcv: rsParseOHLCV(j) };
+    }
   }
-  return null;
+  return { closes: null, ohlcv: null };
 }
 
 
@@ -204,18 +225,162 @@ function rsBB(c) {
   return { upper: m + 2 * std, middle: m, lower: m - 2 * std };
 }
 
-/** 리스크 신호 감지 */
+/** EMA 계산 (내부 헬퍼) */
+function rsEMA(arr, p) {
+  if (!arr || arr.length < p) return [];
+  const k = 2 / (p + 1);
+  const ema = [arr.slice(0, p).reduce((a, b) => a + b, 0) / p];
+  for (let i = p; i < arr.length; i++) ema.push(arr[i] * k + ema[ema.length - 1] * (1 - k));
+  return ema;
+}
+
+/** MACD (12,26,9) */
+function rsMACD(closes) {
+  if (!closes || closes.length < 35) return null;
+  const e12 = rsEMA(closes, 12), e26 = rsEMA(closes, 26);
+  const offset = e12.length - e26.length;
+  const macdLine = [];
+  for (let i = 0; i < e26.length; i++) macdLine.push(e12[i + offset] - e26[i]);
+  const signal = rsEMA(macdLine, 9);
+  const hLen = signal.length;
+  if (hLen < 1) return null;
+  const ml = macdLine[macdLine.length - 1];
+  const sl = signal[signal.length - 1];
+  const hist = ml - sl;
+  const prevHist = macdLine.length >= 2 && signal.length >= 2
+    ? macdLine[macdLine.length - 2] - signal[signal.length - 2] : null;
+  return { macd: ml, signal: sl, hist, prevHist };
+}
+
+/** 스토캐스틱 (%K 14, %D 3) */
+function rsStochastic(ohlcv) {
+  if (!ohlcv || ohlcv.length < 17) return null;
+  const p = 14, dp = 3;
+  const kVals = [];
+  for (let i = p - 1; i < ohlcv.length; i++) {
+    const slice = ohlcv.slice(i - p + 1, i + 1);
+    const hh = Math.max(...slice.map(b => b.h));
+    const ll = Math.min(...slice.map(b => b.l));
+    kVals.push(hh === ll ? 50 : ((ohlcv[i].c - ll) / (hh - ll)) * 100);
+  }
+  if (kVals.length < dp) return null;
+  const dVals = [];
+  for (let i = dp - 1; i < kVals.length; i++) {
+    dVals.push(kVals.slice(i - dp + 1, i + 1).reduce((a, b) => a + b, 0) / dp);
+  }
+  const k = kVals[kVals.length - 1];
+  const d = dVals[dVals.length - 1];
+  const prevK = kVals.length >= 2 ? kVals[kVals.length - 2] : null;
+  const prevD = dVals.length >= 2 ? dVals[dVals.length - 2] : null;
+  return { k, d, prevK, prevD };
+}
+
+/** OBV (On Balance Volume) */
+function rsOBV(ohlcv) {
+  if (!ohlcv || ohlcv.length < 20) return null;
+  let obv = 0;
+  const obvArr = [0];
+  for (let i = 1; i < ohlcv.length; i++) {
+    if (ohlcv[i].c > ohlcv[i - 1].c) obv += ohlcv[i].v;
+    else if (ohlcv[i].c < ohlcv[i - 1].c) obv -= ohlcv[i].v;
+    obvArr.push(obv);
+  }
+  // OBV 추세: 최근 20일 OBV SMA vs 현재 OBV
+  const recent = obvArr.slice(-20);
+  const obvSma = recent.reduce((a, b) => a + b, 0) / recent.length;
+  return { current: obv, sma20: obvSma, trend: obv > obvSma ? "up" : "down" };
+}
+
+/** 거래량 이동평균 (20일) 대비 현재 거래량 비율 */
+function rsVolMA(ohlcv) {
+  if (!ohlcv || ohlcv.length < 21) return null;
+  const vols = ohlcv.map(b => b.v);
+  const avg20 = vols.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+  const last = vols[vols.length - 1];
+  return avg20 > 0 ? { vol: last, avg20, ratio: last / avg20 } : null;
+}
+
+/** 데드크로스/골든크로스 감지 (50일/200일 MA 기반, 최근 5일 이내 발생) */
+function rsCrossDetect(closes) {
+  if (!closes || closes.length < 205) return null;
+  // 최근 6일 간 50MA/200MA 계산
+  const results = [];
+  for (let d = 0; d < 6; d++) {
+    const end = closes.length - d;
+    const ma50 = closes.slice(end - 50, end).reduce((a, b) => a + b, 0) / 50;
+    const ma200 = closes.slice(end - 200, end).reduce((a, b) => a + b, 0) / 200;
+    results.push({ ma50, ma200 });
+  }
+  // 현재 상태
+  const now = results[0], prev = results[1];
+  if (now.ma50 < now.ma200 && prev.ma50 >= prev.ma200)
+    return { type: "dead", msg: "데드크로스 발생 (50MA↓200MA)" };
+  if (now.ma50 > now.ma200 && prev.ma50 <= prev.ma200)
+    return { type: "golden", msg: "골든크로스 발생 (50MA↑200MA)" };
+  if (now.ma50 < now.ma200)
+    return { type: "bearish", msg: "데드크로스 구간 (50MA < 200MA)" };
+  return null;
+}
+
+/** 차트 패턴 감지 (간소화된 피크/밸리 기반) */
+function rsPatternDetect(closes) {
+  if (!closes || closes.length < 60) return [];
+  const patterns = [];
+  const d = closes.slice(-60);
+
+  // 피크/밸리 찾기 (±2일 로컬 극값)
+  const peaks = [], valleys = [];
+  for (let i = 2; i < d.length - 2; i++) {
+    if (d[i] > d[i - 1] && d[i] > d[i - 2] && d[i] > d[i + 1] && d[i] > d[i + 2]) peaks.push({ i, v: d[i] });
+    if (d[i] < d[i - 1] && d[i] < d[i - 2] && d[i] < d[i + 1] && d[i] < d[i + 2]) valleys.push({ i, v: d[i] });
+  }
+
+  // 더블탑: 최근 2개 피크가 비슷한 높이 (2% 이내), 사이에 밸리
+  if (peaks.length >= 2) {
+    const [p1, p2] = peaks.slice(-2);
+    const diff = Math.abs(p1.v - p2.v) / Math.max(p1.v, p2.v);
+    const midValley = valleys.find(v => v.i > p1.i && v.i < p2.i);
+    if (diff < 0.02 && midValley && d[d.length - 1] < p2.v * 0.98) {
+      patterns.push({ type: "DOUBLE_TOP", sev: "high", msg: "더블탑 패턴 감지" });
+    }
+  }
+
+  // 헤드앤숄더: 3개 피크 중 가운데가 가장 높고, 양쪽 어깨가 비슷
+  if (peaks.length >= 3) {
+    const [s1, head, s2] = peaks.slice(-3);
+    if (head.v > s1.v && head.v > s2.v) {
+      const shoulderDiff = Math.abs(s1.v - s2.v) / Math.max(s1.v, s2.v);
+      if (shoulderDiff < 0.03 && d[d.length - 1] < s2.v * 0.98) {
+        patterns.push({ type: "HEAD_SHOULDERS", sev: "critical", msg: "헤드앤숄더 패턴 감지" });
+      }
+    }
+  }
+
+  // 갭다운: 최근 5일 내 전일 저가 > 당일 고가인 하락 갭
+  const recent = closes.slice(-6);
+  for (let i = 1; i < recent.length; i++) {
+    // 간이 갭 감지: 전일 대비 -2% 이상 하락 시작
+    if (i >= 1 && recent[i] < recent[i - 1] * 0.98) {
+      patterns.push({ type: "GAP_DOWN", sev: "high", msg: "하락 갭 감지" });
+      break;
+    }
+  }
+
+  return patterns;
+}
+
+/** 리스크 신호 감지 (확장) */
 function rsFindRisks(pr, prevClose, ind) {
   const R = [];
   if (!pr || !ind) return R;
 
-  // 급락 감지
+  // ── 급락 감지 ──
   if (prevClose > 0) {
     const ch = ((pr - prevClose) / prevClose) * 100;
     if (ch <= -3) R.push({ type: "DROP", sev: "critical", msg: `일간 ${ch.toFixed(2)}% 급락` });
   }
 
-  // 이동평균선 이탈/터치
+  // ── 이동평균선 이탈/터치 ──
   for (const [k, lb] of [["ma50", "50일"], ["ma100", "100일"], ["ma200", "200일"], ["ma300", "300일"]]) {
     const v = ind[k];
     if (v == null) continue;
@@ -224,19 +389,95 @@ function rsFindRisks(pr, prevClose, ind) {
     else if (d < -0.5 && d > -3) R.push({ type: "MA_B", sev: "critical", msg: `${lb}선 이탈(${d.toFixed(1)}%)` });
   }
 
-  // RSI 과매수/과매도
+  // ── RSI 과매수/과매도 + 다이버전스 ──
   if (ind.rsi != null) {
-    if (ind.rsi >= 75) R.push({ type: "RSI_OB", sev: "medium", msg: `RSI ${ind.rsi.toFixed(0)} 과매수` });
-    else if (ind.rsi <= 25) R.push({ type: "RSI_OS", sev: "high", msg: `RSI ${ind.rsi.toFixed(0)} 과매도` });
+    if (ind.rsi >= 70) R.push({ type: "RSI_OB", sev: "medium", msg: `RSI ${ind.rsi.toFixed(0)} 과매수` });
+    else if (ind.rsi <= 30) R.push({ type: "RSI_OS", sev: "high", msg: `RSI ${ind.rsi.toFixed(0)} 과매도` });
   }
 
-  // 볼린저밴드
+  // ── 볼린저밴드 ──
   if (ind.bb) {
     if (pr > ind.bb.upper) R.push({ type: "BB_U", sev: "medium", msg: "BB 상단돌파" });
     if (pr < ind.bb.lower) R.push({ type: "BB_D", sev: "high", msg: "BB 하단이탈" });
   }
 
+  // ── MACD ──
+  if (ind.macd) {
+    const m = ind.macd;
+    // 시그널선 하향 돌파 (bearish crossover)
+    if (m.prevHist != null && m.prevHist > 0 && m.hist <= 0)
+      R.push({ type: "MACD_BEAR", sev: "high", msg: "MACD 시그널 하향돌파" });
+    // 히스토그램 축소 (약세 전환 경고)
+    if (m.prevHist != null && m.hist > 0 && m.hist < m.prevHist * 0.5)
+      R.push({ type: "MACD_WEAK", sev: "medium", msg: "MACD 히스토그램 급축소" });
+  }
+
+  // ── 스토캐스틱 ──
+  if (ind.stoch) {
+    const s = ind.stoch;
+    if (s.k > 80 && s.d > 80)
+      R.push({ type: "STOCH_OB", sev: "medium", msg: `스토캐스틱 과매수 (K:${s.k.toFixed(0)})` });
+    else if (s.k < 20 && s.d < 20)
+      R.push({ type: "STOCH_OS", sev: "high", msg: `스토캐스틱 과매도 (K:${s.k.toFixed(0)})` });
+    // %K가 %D 하향 돌파
+    if (s.prevK != null && s.prevD != null && s.prevK > s.prevD && s.k <= s.d)
+      R.push({ type: "STOCH_CROSS", sev: "high", msg: "%K↓%D 하향돌파" });
+  }
+
+  // ── OBV 다이버전스 ──
+  if (ind.obv && prevClose > 0) {
+    const priceUp = pr > prevClose;
+    if (priceUp && ind.obv.trend === "down")
+      R.push({ type: "OBV_DIV", sev: "high", msg: "OBV 다이버전스 (가격↑ OBV↓)" });
+  }
+
+  // ── 거래량 급증 (하락 시) ──
+  if (ind.volMA && prevClose > 0) {
+    const priceDown = pr < prevClose;
+    if (priceDown && ind.volMA.ratio > 2.0)
+      R.push({ type: "VOL_SPIKE", sev: "high", msg: `하락+거래량 ${ind.volMA.ratio.toFixed(1)}배 급증` });
+  }
+
+  // ── VIX (시장 레벨) ──
+  if (RS_MARKET.vix?.value > 30)
+    R.push({ type: "VIX_HIGH", sev: "critical", msg: `VIX ${RS_MARKET.vix.value.toFixed(1)} 극도공포` });
+  else if (RS_MARKET.vix?.value > 25)
+    R.push({ type: "VIX_WARN", sev: "medium", msg: `VIX ${RS_MARKET.vix.value.toFixed(1)} 경계` });
+
+  // ── 데드크로스/골든크로스 ──
+  if (ind.cross) {
+    if (ind.cross.type === "dead")
+      R.push({ type: "DEAD_X", sev: "critical", msg: ind.cross.msg });
+    else if (ind.cross.type === "bearish")
+      R.push({ type: "BEAR_ZONE", sev: "high", msg: ind.cross.msg });
+  }
+
+  // ── 차트 패턴 ──
+  if (ind.patterns?.length) {
+    ind.patterns.forEach(p => R.push(p));
+  }
+
   return R;
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   시장 레벨 지표 — VIX (^VIX)
+   ═══════════════════════════════════════════════════════ */
+
+const RS_MARKET = { vix: null, vixLoading: false };
+
+async function rsLoadVIX() {
+  if (RS_MARKET.vixLoading) return;
+  RS_MARKET.vixLoading = true;
+  try {
+    const j = await rsYahooFetch("^VIX", "5d", "1d");
+    if (j) {
+      const q = rsParseQuote(j);
+      if (q?.c > 0) RS_MARKET.vix = { value: q.c, prevClose: q.pc || 0, ts: Date.now() };
+    }
+  } catch {}
+  RS_MARKET.vixLoading = false;
 }
 
 
@@ -252,21 +493,33 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   const fetchTicker = isKR ? rsKRTicker(portTicker) : portTicker;
   const q = isKR ? await rsKRQuote(fetchTicker) : await rsUSQuote(fetchTicker);
   await RSW(130);
-  const cl = isKR ? await rsKRCandles(fetchTicker) : await rsUSCandles(fetchTicker);
+  const candleResult = isKR ? await rsKRCandles(fetchTicker) : await rsUSCandles(fetchTicker);
   await RSW(130);
 
   if (!q || !(q.c > 0)) { store.data[portTicker] = { loading: false, error: true }; return; }
 
   const pr = q.c, prevClose = q.pc || 0;
+  const cl = candleResult?.closes;
+  const ohlcv = candleResult?.ohlcv;
   const hasC = cl && cl.length > 20;
   const ind = hasC
-    ? { ma50: rsSMA(cl, 50), ma100: rsSMA(cl, 100), ma200: rsSMA(cl, 200), ma300: rsSMA(cl, 300), rsi: rsRSI(cl), bb: rsBB(cl) }
-    : { ma50: null, ma100: null, ma200: null, ma300: null, rsi: null, bb: null };
+    ? {
+        ma50: rsSMA(cl, 50), ma100: rsSMA(cl, 100), ma200: rsSMA(cl, 200), ma300: rsSMA(cl, 300),
+        rsi: rsRSI(cl), bb: rsBB(cl),
+        macd: rsMACD(cl),
+        stoch: ohlcv ? rsStochastic(ohlcv) : null,
+        obv: ohlcv ? rsOBV(ohlcv) : null,
+        volMA: ohlcv ? rsVolMA(ohlcv) : null,
+        cross: rsCrossDetect(cl),
+        patterns: rsPatternDetect(cl)
+      }
+    : { ma50: null, ma100: null, ma200: null, ma300: null, rsi: null, bb: null, macd: null, stoch: null, obv: null, volMA: null, cross: null, patterns: [] };
 
   store.data[portTicker] = {
     loading: false, loaded: true, loadedAt: Date.now(),
     price: pr, prevClose, changePct: prevClose > 0 ? ((pr - prevClose) / prevClose) * 100 : 0,
-    closes: hasC ? cl : null, intraday: (isKR && q.intraday?.length > 2) ? q.intraday : null,
+    closes: hasC ? cl : null, ohlcv: ohlcv || null,
+    intraday: (isKR && q.intraday?.length > 2) ? q.intraday : null,
     ind, risks: rsFindRisks(pr, prevClose, ind)
   };
   store.status.loaded++;
@@ -326,9 +579,13 @@ async function startRSSentinel() {
   cachedKR.forEach(r => { if (r.k && r.v?.loaded) RS_KR.data[r.k] = r.v; });
   if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
 
-  // 양쪽 동시 백그라운드 로딩
+  // VIX + 양쪽 동시 백그라운드 로딩
+  rsLoadVIX();
   rsLoadUS();
   rsLoadKR();
+
+  // VIX 10분마다 갱신
+  setInterval(rsLoadVIX, 600000);
 
   // 장중 3분 / 장외 30분 적응형 갱신
   setInterval(() => {
@@ -515,6 +772,10 @@ function rsShowDetail(ticker, isKR) {
 
   const ind = d?.ind || {};
   const rsiColor = ind.rsi >= 70 ? "#ef4444" : ind.rsi <= 30 ? "#2ee0a8" : "var(--txt2)";
+  const macdColor = ind.macd ? (ind.macd.hist > 0 ? "#2ee0a8" : "#ef4444") : "var(--txt2)";
+  const stochColor = ind.stoch ? (ind.stoch.k > 80 ? "#ef4444" : ind.stoch.k < 20 ? "#2ee0a8" : "var(--txt2)") : "var(--txt2)";
+  const obvColor = ind.obv ? (ind.obv.trend === "up" ? "#2ee0a8" : "#ef4444") : "var(--txt2)";
+  const crossColor = ind.cross ? (ind.cross.type === "dead" || ind.cross.type === "bearish" ? "#ef4444" : "#2ee0a8") : "var(--txt2)";
 
   const riskRows = (d?.risks || []).map(r => `
     <div class="rs-risk-row" style="border-left:3px solid ${sevBorderL[r.sev] || "#334155"}">
@@ -587,6 +848,15 @@ function rsShowDetail(ticker, isKR) {
           ${indCell("BB상단", ind.bb?.upper != null ? shortFmt(ind.bb.upper) : null, "#eab308")}
           ${indCell("BB중심", ind.bb?.middle != null ? shortFmt(ind.bb.middle) : null, "#eab308")}
           ${indCell("BB하단", ind.bb?.lower != null ? shortFmt(ind.bb.lower) : null, "#eab308")}
+          ${indCell("MACD", ind.macd ? ind.macd.macd.toFixed(2) : null, macdColor)}
+          ${indCell("Signal", ind.macd ? ind.macd.signal.toFixed(2) : null, macdColor)}
+          ${indCell("Histogram", ind.macd ? ind.macd.hist.toFixed(2) : null, ind.macd ? (ind.macd.hist > 0 ? "#2ee0a8" : "#ef4444") : "var(--txt2)")}
+          ${indCell("%K(14)", ind.stoch ? ind.stoch.k.toFixed(1) : null, stochColor)}
+          ${indCell("%D(3)", ind.stoch ? ind.stoch.d.toFixed(1) : null, stochColor)}
+          ${indCell("OBV추세", ind.obv ? (ind.obv.trend === "up" ? "▲ 매집" : "▼ 분산") : null, obvColor)}
+          ${indCell("거래량비", ind.volMA ? ind.volMA.ratio.toFixed(1) + "x" : null, ind.volMA?.ratio > 2 ? "#ef4444" : ind.volMA?.ratio > 1.5 ? "#eab308" : "var(--txt2)")}
+          ${indCell("MA크로스", ind.cross ? (ind.cross.type === "dead" ? "데드" : ind.cross.type === "bearish" ? "약세구간" : ind.cross.type === "golden" ? "골든" : "강세") : null, crossColor)}
+          ${indCell("VIX", RS_MARKET.vix ? RS_MARKET.vix.value.toFixed(1) : null, RS_MARKET.vix?.value > 30 ? "#ef4444" : RS_MARKET.vix?.value > 25 ? "#eab308" : "#2ee0a8")}
           ${indCell("BB(20)", portItem.bb20 || null, "var(--txt2)")}
           ${indCell("BB(252)", portItem.bb252 || null, "var(--txt2)")}
         </div>
