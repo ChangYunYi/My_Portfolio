@@ -201,12 +201,12 @@ function switchTab(id) {
   const renderers = {
     overview: renderOverview, index: renderIndex, dividend: renderDividend,
     growth: renderGrowth, kr: renderKR,
-    "us-risk": renderUSRisk, "kr-risk": renderKRRisk
+    "us-risk": renderUSRisk
   };
   renderers[id]?.(el);
 
   // 리스크 탭 진입 시 3분 자동 리프레쉬 시작, 이탈 시 정지
-  if (id === "us-risk" || id === "kr-risk") {
+  if (id === "us-risk") {
     _startRiskTabRefresh();
   } else {
     _stopRiskTabRefresh();
@@ -1304,13 +1304,6 @@ function _startRiskTabRefresh() {
       } else {
         console.log("[Risk] 미장 마감 → 리프레쉬 스킵");
       }
-    } else if (activeTab === "kr-risk") {
-      if (_isKRMarketOpen()) {
-        console.log("[Risk] 국장 열림 → 리스크 데이터 리프레쉬");
-        rsLoadKR();
-      } else {
-        console.log("[Risk] 국장 마감 → 리프레쉬 스킵");
-      }
     }
   }, 180000); // 3분
 }
@@ -1359,55 +1352,6 @@ function renderUSRisk(el) {
     </div>`).join("")}
   </div>`;
   setTimeout(() => rsUpdateMonitor("us"), 0);
-}
-
-function renderKRRisk(el) {
-  const krStocks = P.kr.filter(h => h.ticker);
-  const sectorItems = KR_SECTORS.map(sec => ({
-    ...sec,
-    items: krStocks.filter(h => krSectorOf(h.ticker)?.id === sec.id),
-  }));
-  const uncategorized = krStocks.filter(h => !krSectorOf(h.ticker));
-  const mktOpen = _isKRMarketOpen();
-
-  el.innerHTML = `<div class="section">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:10px 16px;background:var(--s1);border-radius:11px;border:1px solid var(--bdr)">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:16px">📡</span>
-        <span style="font-size:13px;font-weight:800;color:var(--txt)">국내 시장 실시간 리스크 모니터</span>
-        <span style="font-size:10px;color:var(--mute)">${krStocks.length}개 종목</span>
-        <span style="font-size:9px;padding:2px 8px;border-radius:5px;font-weight:700;background:${mktOpen ? "rgba(46,224,168,0.15)" : "rgba(255,107,120,0.12)"};color:${mktOpen ? "var(--green)" : "var(--red)"}">${mktOpen ? "장 운영중 · 3분 자동갱신" : "장 마감 · 갱신 중지"}</span>
-      </div>
-      <div id="rsStatusKR" style="display:flex;align-items:center;gap:6px">
-        <span class="rs-dot-load"></span>
-        <span style="font-size:9px;color:var(--mute)">초기화 중...</span>
-      </div>
-    </div>
-    ${sectorItems.filter(sec => sec.items.length > 0).map(sec => `
-    <div style="margin-bottom:18px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
-        <span style="font-size:14px">${sec.icon}</span>
-        <span style="font-size:12px;font-weight:800;color:${sec.color};letter-spacing:0.5px">${sec.label}</span>
-        <div style="flex:1;height:1px;background:linear-gradient(90deg,${sec.color}30,transparent)"></div>
-        <span id="rsSecAlert_${rsSafeId(sec.label)}" style="font-size:10px;color:var(--mute)"></span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">
-        ${sec.items.map(h => mkRSCard(h, true, sec.color)).join("")}
-      </div>
-    </div>`).join("")}
-    ${uncategorized.length > 0 ? `
-    <div style="margin-bottom:18px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
-        <span style="font-size:14px">🇰🇷</span>
-        <span style="font-size:12px;font-weight:800;color:var(--amber);letter-spacing:0.5px">기타</span>
-        <div style="flex:1;height:1px;background:linear-gradient(90deg,var(--amber)30,transparent)"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">
-        ${uncategorized.map(h => mkRSCard(h, true, "var(--amber)")).join("")}
-      </div>
-    </div>` : ""}
-  </div>`;
-  setTimeout(() => rsUpdateMonitor("kr"), 0);
 }
 
 

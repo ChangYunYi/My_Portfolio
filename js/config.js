@@ -24,7 +24,6 @@ const TABS = [
   { id: "growth",    label: "성장",       icon: "🚀" },
   { id: "kr",        label: "국내",       icon: "🇰🇷" },
   { id: "us-risk",   label: "미장 Risk",  icon: "🌎" },
-  { id: "kr-risk",   label: "국장 Risk",  icon: "📡" },
 ];
 
 /** ETF 티커 목록 (isETF 판별용) */
