@@ -367,4 +367,6 @@ tr:hover td { background: rgba(24, 47, 82, 0.5); }
   .rs-ind-grid { grid-template-columns: repeat(3, 1fr); }
   .rs-port-grid { grid-template-columns: repeat(2, 1fr); }
   .rs-popup { border-radius: 14px; }
+  /* 매크로 팝업 2열→1열 */
+  .rs-popup-body > div > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
 }

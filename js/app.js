@@ -973,38 +973,42 @@ function openMacroPopup() {
     { id: "senti",  icon: "🧠", title: "심리 & 시장",         color: "#ae82ff" },
   ];
 
-  let catHTML = cats.map(cat => {
+  let catHTML = `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">` + cats.map(cat => {
     const fredItems = Object.entries(FRED_SERIES).filter(([,v]) => v.cat === cat.id);
     const yahooItems = Object.entries(YAHOO_SYMBOLS).filter(([,v]) => v.cat === cat.id);
     const items = [...fredItems.map(([k,info]) => ({ k, info, val: data?.[k] })),
                    ...yahooItems.map(([k,info]) => ({ k: "Y_"+k, info, val: data?.["Y_"+k] }))];
 
-    return `<div style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid ${cat.color}30">
+    return `<div style="background:var(--s1);border-radius:12px;padding:14px 16px;border:1px solid var(--bdr);border-left:3px solid ${cat.color}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <span style="font-size:15px">${cat.icon}</span>
-        <span style="font-size:13px;font-weight:800;color:${cat.color}">${cat.title}</span>
+        <span style="font-size:12px;font-weight:800;color:${cat.color}">${cat.title}</span>
       </div>
       ${items.map(item => {
         const sig = item.val ? _mSignal(item.val.value, item.info.danger) : { color: "var(--mute)" };
         const hasHistory = item.val?.history?.length > 2;
-        return `<div style="margin-bottom:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="width:8px;height:8px;border-radius:50%;background:${sig.color};flex-shrink:0"></span>
-              <span style="font-size:12px;font-weight:700;color:var(--txt)">${item.info.label}</span>
+        return `<div style="margin-bottom:10px;background:var(--card);border-radius:8px;padding:10px 12px;border:1px solid var(--bdr)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+              <span style="width:7px;height:7px;border-radius:50%;background:${sig.color};flex-shrink:0"></span>
+              <span style="font-size:11px;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.info.label}</span>
             </div>
-            <div style="text-align:right">
-              <span style="font-size:14px;font-weight:800;color:var(--txt);font-family:monospace">${item.val ? _mFmt(item.val.value, item.info.unit) : "—"}</span>
+            <div style="text-align:right;flex-shrink:0;margin-left:8px">
+              <span style="font-size:14px;font-weight:800;color:var(--txt);font-family:'SF Mono',monospace">${item.val ? _mFmt(item.val.value, item.info.unit) : "—"}</span>
               ${item.val ? _mChgHTML(item.val.chg, item.info.unit) : ""}
             </div>
           </div>
-          <div style="height:80px;margin-top:2px;background:var(--s1);border-radius:8px;padding:4px;overflow:hidden">
-            ${hasHistory ? `<canvas id="mchart_${item.k}" style="width:100%;height:100%"></canvas>` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--mute)">히스토리 데이터 없음</div>`}
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:8px;color:var(--mute)">${item.info.src}${item.val?.date ? " · " + item.val.date : ""}</span>
+            <span style="font-size:8px;color:var(--mute)">⚠ ${item.info.danger}</span>
+          </div>
+          <div style="height:70px;background:rgba(4,8,15,0.4);border-radius:6px;padding:4px;overflow:hidden">
+            ${hasHistory ? `<canvas id="mchart_${item.k}" style="width:100%;height:100%"></canvas>` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:9px;color:var(--mute)">히스토리 데이터 없음</div>`}
           </div>
         </div>`;
       }).join("")}
     </div>`;
-  }).join("");
+  }).join("") + `</div>`;
 
   // 전체 리스크 요약
   const risk = _calcMacroRiskLevel(data);
@@ -1013,7 +1017,7 @@ function openMacroPopup() {
   overlay.id = "macroPopupOverlay";
   overlay.className = "rs-overlay";
   overlay.onclick = e => { if (e.target === overlay) closeMacroPopup(); };
-  overlay.innerHTML = `<div class="rs-popup" style="max-width:700px">
+  overlay.innerHTML = `<div class="rs-popup" style="max-width:960px">
     <div class="rs-popup-head">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:18px">🌐</span>
@@ -1030,7 +1034,14 @@ function openMacroPopup() {
         <button class="rs-popup-close" onclick="closeMacroPopup()">✕</button>
       </div>
     </div>
-    <div class="rs-popup-body">${catHTML}</div>
+    <div class="rs-popup-body">
+      ${catHTML}
+      <div style="margin-top:14px;padding:8px 14px;background:rgba(31,58,98,0.12);border-radius:8px;font-size:9px;color:var(--mute);line-height:1.7;display:flex;gap:20px;flex-wrap:wrap">
+        <span>📡 <b>FRED</b> — Federal Reserve Economic Data</span>
+        <span>📈 <b>Yahoo Finance</b> — 실시간 시세 (~15분 지연)</span>
+        <span>🔄 상태: <span style="color:var(--green)">●</span> 정상 <span style="color:var(--amber)">●</span> 주의 <span style="color:var(--red)">●</span> 위험</span>
+      </div>
+    </div>
   </div>`;
   document.body.appendChild(overlay);
 
@@ -1139,7 +1150,6 @@ function _startRiskTabRefresh() {
       if (_isUSMarketOpen()) {
         console.log("[Risk] 미장 열림 → 리스크 데이터 리프레쉬");
         rsLoadUS();
-        loadMacroData();
       } else {
         console.log("[Risk] 미장 마감 → 리프레쉬 스킵");
       }
@@ -1147,7 +1157,6 @@ function _startRiskTabRefresh() {
       if (_isKRMarketOpen()) {
         console.log("[Risk] 국장 열림 → 리스크 데이터 리프레쉬");
         rsLoadKR();
-        loadMacroData();
       } else {
         console.log("[Risk] 국장 마감 → 리프레쉬 스킵");
       }
@@ -1197,10 +1206,8 @@ function renderUSRisk(el) {
         ${sec.items.filter(h => h.ticker).map(h => mkRSCard(h, false, sec.color)).join("")}
       </div>
     </div>`).join("")}
-    ${_macroRiskHTML()}
   </div>`;
   setTimeout(() => rsUpdateMonitor("us"), 0);
-  setTimeout(() => loadMacroData(), 100);
 }
 
 function renderKRRisk(el) {
@@ -1248,10 +1255,8 @@ function renderKRRisk(el) {
         ${uncategorized.map(h => mkRSCard(h, true, "var(--amber)")).join("")}
       </div>
     </div>` : ""}
-    ${_macroRiskHTML()}
   </div>`;
   setTimeout(() => rsUpdateMonitor("kr"), 0);
-  setTimeout(() => loadMacroData(), 100);
 }
 
 
