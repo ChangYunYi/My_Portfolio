@@ -156,7 +156,13 @@ function rsKRTicker(t) {
 async function rsKRQuote(sym) {
   for (const sfx of [sym, sym.replace(".KS", ".KQ")]) {
     const j = await rsYahooFetch(sfx, "1d", "5m");
-    if (j) { const q = rsParseQuote(j); if (q?.c) return q; }
+    if (j) {
+      const q = rsParseQuote(j);
+      if (q?.c) {
+        q.intraday = rsParseCandles(j);
+        return q;
+      }
+    }
   }
   return null;
 }
@@ -260,14 +266,18 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   store.data[portTicker] = {
     loading: false, loaded: true, loadedAt: Date.now(),
     price: pr, prevClose, changePct: prevClose > 0 ? ((pr - prevClose) / prevClose) * 100 : 0,
-    closes: hasC ? cl : null, ind, risks: rsFindRisks(pr, prevClose, ind)
+    closes: hasC ? cl : null, intraday: (isKR && q.intraday?.length > 2) ? q.intraday : null,
+    ind, risks: rsFindRisks(pr, prevClose, ind)
   };
   store.status.loaded++;
   rsDbPut(dbStore, portTicker, store.data[portTicker]);
 
   rsUpdateStatus(mkt);
-  const tab = isKR ? "kr-risk" : "us-risk";
-  if (activeTab === tab) rsUpdateMonitor(mkt);
+  if (isKR) {
+    if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
+  } else {
+    if (activeTab === "us-risk") rsUpdateMonitor(mkt);
+  }
 }
 
 async function rsLoadUS() {
@@ -295,7 +305,7 @@ async function rsLoadKR() {
   RS_KR.status.loading = false;
   RS_KR.status.lastUp = new Date();
   rsUpdateStatus("kr");
-  if (activeTab === "kr-risk") rsUpdateMonitor("kr");
+  if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
 }
 
 
@@ -315,7 +325,7 @@ async function startRSSentinel() {
   cachedUS.forEach(r => { if (r.k && r.v?.loaded) RS_US.data[r.k] = r.v; });
   cachedKR.forEach(r => { if (r.k && r.v?.loaded) RS_KR.data[r.k] = r.v; });
   if (activeTab === "us-risk") rsUpdateMonitor("us");
-  if (activeTab === "kr-risk") rsUpdateMonitor("kr");
+  if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
 
   // 양쪽 동시 백그라운드 로딩
   rsLoadUS();
@@ -330,7 +340,7 @@ async function startRSSentinel() {
     rsUpdateStatus("us");
     rsUpdateStatus("kr");
     if (activeTab === "us-risk") rsUpdateMonitor("us");
-    if (activeTab === "kr-risk") rsUpdateMonitor("kr");
+    if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
   }, 8000);
 }
 
