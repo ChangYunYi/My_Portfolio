@@ -648,6 +648,72 @@ function renderKR(el) {
 
 
 /* ═══════════════════════════════════════════════════════
+   매크로 리스크 지표 패널
+   ═══════════════════════════════════════════════════════ */
+
+function _macroRiskHTML() {
+  const tblStyle = `style="width:100%;border-collapse:collapse;font-size:11px"`;
+  const thStyle = `style="text-align:left;padding:7px 10px;border-bottom:2px solid var(--bdr);color:var(--mute);font-weight:700;font-size:10px;letter-spacing:0.5px"`;
+  const tdStyle = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);color:var(--txt)"`;
+  const tdDanger = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);color:var(--red);font-size:10px"`;
+  const secHead = (icon, title, color) =>
+    `<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
+      <span style="font-size:14px">${icon}</span>
+      <span style="font-size:12px;font-weight:800;color:${color};letter-spacing:0.5px">${title}</span>
+      <div style="flex:1;height:1px;background:linear-gradient(90deg,${color}30,transparent)"></div>
+    </div>`;
+
+  return `
+    <div class="card" style="margin-top:4px">
+      <div class="lbl" style="margin-bottom:6px">🌐 매크로 리스크 지표 (Macro Risk Indicators)</div>
+
+      ${secHead("💵", "금리 & 유동성", "var(--blue)")}
+      <table ${tblStyle}>
+        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        <tbody>
+          <tr><td ${tdStyle}>미국채 장단기 금리차 (10Y-2Y)</td><td ${tdDanger}>역전 지속 → 경기침체 선행</td></tr>
+          <tr><td ${tdStyle}>연준 기준금리 / FOMC</td><td ${tdDanger}>예상 외 급격한 인상</td></tr>
+          <tr><td ${tdStyle}>실질금리 (TIPS)</td><td ${tdDanger}>실질금리 급등 → 성장주 밸류에이션 압박</td></tr>
+          <tr><td ${tdStyle}>M2 통화량</td><td ${tdDanger}>M2 감소 → 유동성 축소</td></tr>
+        </tbody>
+      </table>
+
+      ${secHead("🏭", "경기 & 기업 펀더멘털", "var(--green)")}
+      <table ${tblStyle}>
+        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        <tbody>
+          <tr><td ${tdStyle}>PMI (구매관리자지수)</td><td ${tdDanger}>PMI &lt; 50 (제조업 위축)</td></tr>
+          <tr><td ${tdStyle}>EPS 성장률</td><td ${tdDanger}>어닝 하향 조정 사이클 진입</td></tr>
+          <tr><td ${tdStyle}>PER / Shiller CAPE</td><td ${tdDanger}>CAPE &gt; 30 → 역사적 고평가 구간</td></tr>
+          <tr><td ${tdStyle}>기업 이익률 (Profit Margin)</td><td ${tdDanger}>마진 압박 → 실적 둔화 우려</td></tr>
+        </tbody>
+      </table>
+
+      ${secHead("🔗", "신용 & 위험 프리미엄", "var(--amber)")}
+      <table ${tblStyle}>
+        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        <tbody>
+          <tr><td ${tdStyle}>하이일드 스프레드 (HY Spread)</td><td ${tdDanger}>스프레드 급확대 → 신용위험 증가</td></tr>
+          <tr><td ${tdStyle}>CDS 스프레드</td><td ${tdDanger}>특정 국가/기업 부도 위험 상승</td></tr>
+          <tr><td ${tdStyle}>TED 스프레드</td><td ${tdDanger}>은행 간 신용 경색</td></tr>
+          <tr><td ${tdStyle}>달러 인덱스 (DXY)</td><td ${tdDanger}>달러 급등 → 신흥국/원자재 압박</td></tr>
+        </tbody>
+      </table>
+
+      ${secHead("🧠", "심리 & 포지셔닝", "var(--purple)")}
+      <table ${tblStyle}>
+        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        <tbody>
+          <tr><td ${tdStyle}>AAII 투자심리</td><td ${tdDanger}>강세론자 극단적 과잉</td></tr>
+          <tr><td ${tdStyle}>Put/Call Ratio</td><td ${tdDanger}>비율 급격 하락 (과도한 낙관)</td></tr>
+          <tr><td ${tdStyle}>CNN Fear & Greed Index</td><td ${tdDanger}>Extreme Greed 구간</td></tr>
+          <tr><td ${tdStyle}>COT 리포트</td><td ${tdDanger}>기관 포지션 대량 청산</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════
    렌더러 — 미장 Risk / 국장 Risk
    ═══════════════════════════════════════════════════════ */
 
@@ -683,13 +749,8 @@ function renderUSRisk(el) {
         ${sec.items.filter(h => h.ticker).map(h => mkRSCard(h, false, sec.color)).join("")}
       </div>
     </div>`).join("")}
-    <div class="card" style="margin-top:4px">
-      <div class="lbl" style="margin-bottom:10px">리스크 지표 통합 (RSI · BB · MDD) — 미국 종목</div>
-      <canvas id="chUSRisk" height="${Math.max(100, usStocks.filter(h => h.rsi > 0).length * 8)}"></canvas>
-    </div>
+    ${_macroRiskHTML()}
   </div>`;
-
-  _renderRiskChart("chUSRisk", usStocks, false);
   setTimeout(() => rsUpdateMonitor("us"), 0);
 }
 
@@ -736,13 +797,8 @@ function renderKRRisk(el) {
         ${uncategorized.map(h => mkRSCard(h, true, "var(--amber)")).join("")}
       </div>
     </div>` : ""}
-    <div class="card" style="margin-top:4px">
-      <div class="lbl" style="margin-bottom:10px">리스크 지표 통합 (RSI · BB · MDD) — 국내 종목</div>
-      <canvas id="chKRRisk" height="${Math.max(100, krStocks.filter(h => h.rsi > 0).length * 8)}"></canvas>
-    </div>
+    ${_macroRiskHTML()}
   </div>`;
-
-  _renderRiskChart("chKRRisk", krStocks, true);
   setTimeout(() => rsUpdateMonitor("kr"), 0);
 }
 
