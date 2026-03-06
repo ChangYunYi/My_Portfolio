@@ -214,9 +214,14 @@ function updateMetrics(ss, tickers) {
       d.mktcap = q.marketCap || "";
       d.sector = q.sector || "";
       d.name = q.shortName || t.name;
-      // dividendYield: Yahoo는 0.0052 형태 (=0.52%)
-      if (q.dividendYield) d.divyield = r2(q.dividendYield * 100);
-      else if (q.trailingAnnualDividendYield) d.divyield = r2(q.trailingAnnualDividendYield * 100);
+      // dividendYield: Yahoo v7은 퍼센트(5.2) 또는 소수(0.052) 혼용
+      if (q.dividendYield) {
+        var dy = q.dividendYield;
+        d.divyield = r2(dy > 1 ? dy : dy * 100);
+      } else if (q.trailingAnnualDividendYield) {
+        var tdy = q.trailingAnnualDividendYield;
+        d.divyield = r2(tdy > 1 ? tdy : tdy * 100);
+      }
     }
 
     // Yahoo v10 상세 (Stock만, crumb 인증 있을 때)
@@ -257,9 +262,9 @@ function updateMetrics(ss, tickers) {
 
           // AUM (순자산)
           if (ks.totalAssets) d.aum = rawVal(ks.totalAssets);
-          // 배당률
-          if (!d.divyield && sd["yield"]) d.divyield = r2(rawVal(sd["yield"]) * 100);
-          if (!d.divyield && sd.trailingAnnualDividendYield) d.divyield = r2(rawVal(sd.trailingAnnualDividendYield) * 100);
+          // 배당률 (소수/퍼센트 혼용 방어)
+          if (!d.divyield && sd["yield"]) { var sy = rawVal(sd["yield"]); d.divyield = r2(sy > 1 ? sy : sy * 100); }
+          if (!d.divyield && sd.trailingAnnualDividendYield) { var sty = rawVal(sd.trailingAnnualDividendYield); d.divyield = r2(sty > 1 ? sty : sty * 100); }
           // 보수율
           var fees = fp.feesAndExpenses;
           if (fees) {

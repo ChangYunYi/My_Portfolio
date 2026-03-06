@@ -147,7 +147,7 @@ async function loadMetrics() {
     if (IS_ETF) {
       sM("mER", row[11], v => v + "%");
       sM("mAUM", row[12], fB);
-      sM("mDivY", row[8], v => v.toFixed(2) + "%");
+      sM("mDivY", row[8], v => { v = v > 30 ? v / 100 : v; return v.toFixed(2) + "%"; });
       sM("mCap", row[7], fB);
       const sec = row[13];
       if (sec) document.getElementById("mSector").textContent = sec;
@@ -166,7 +166,7 @@ async function loadMetrics() {
         document.getElementById("mEPS").style.color = "var(--amber)";
       }
       sM("mCap", row[7], fB);
-      sM("mDivY", row[8], v => v.toFixed(2) + "%");
+      sM("mDivY", row[8], v => { v = v > 30 ? v / 100 : v; return v.toFixed(2) + "%"; });
       sM("mDebt", row[9], v => v.toFixed(1) + "%");
       sM("mOPM", row[10], v => v.toFixed(1) + "%");
     }
