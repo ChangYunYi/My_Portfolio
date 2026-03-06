@@ -334,6 +334,12 @@ tr:hover td { background: rgba(24, 47, 82, 0.5); }
 @keyframes rsPopIn { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes krRowGlow { 0%, 100% { background: rgba(239, 68, 68, .04); box-shadow: inset 3px 0 0 rgba(239, 68, 68, .3); } 50% { background: rgba(239, 68, 68, .1); box-shadow: inset 3px 0 0 rgba(239, 68, 68, .8); } }
 
+/* ── 국내 테이블 안정 레이아웃 ── */
+table.kr-tbl { table-layout: fixed; width: 100%; }
+table.kr-tbl td, table.kr-tbl th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kr-spark-placeholder { width: 80px; height: 20px; border-radius: 3px; background: linear-gradient(90deg, var(--s1), var(--s2), var(--s1)); background-size: 200% 100%; animation: pulse 2s infinite; }
+.kr-cur { font-weight: 700; transition: color .3s; }
+
 /* ── 국내 테이블 리스크 행 발광 ── */
 tr.kr-risk-glow td { animation: krRowGlow 2.5s ease-in-out infinite; }
 
