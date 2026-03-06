@@ -16,7 +16,7 @@ const SERIES = [
 ];
 
 async function fetchSeries(id) {
-  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=2`;
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${id}&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=30`;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!r.ok) { console.warn(`  [WARN] ${id}: HTTP ${r.status}`); return null; }
@@ -26,7 +26,9 @@ async function fetchSeries(id) {
     const cur = { value: parseFloat(obs[0].value), date: obs[0].date };
     const prev = obs.length > 1 ? { value: parseFloat(obs[1].value), date: obs[1].date } : null;
     const chg = prev ? +(cur.value - prev.value).toFixed(4) : null;
-    return { value: cur.value, date: cur.date, prev: prev?.value ?? null, chg };
+    // 히스토리: 최신→오래된 순이므로 reverse하여 시간순 정렬
+    const history = obs.slice(0, 30).reverse().map(o => ({ d: o.date, v: parseFloat(o.value) }));
+    return { value: cur.value, date: cur.date, prev: prev?.value ?? null, chg, history };
   } catch (e) {
     console.warn(`  [ERR] ${id}: ${e.message}`);
     return null;

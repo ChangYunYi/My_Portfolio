@@ -204,6 +204,18 @@ function switchTab(id) {
     "us-risk": renderUSRisk, "kr-risk": renderKRRisk
   };
   renderers[id]?.(el);
+
+  // 리스크 탭 진입 시 3분 자동 리프레쉬 시작, 이탈 시 정지
+  if (id === "us-risk" || id === "kr-risk") {
+    _startRiskTabRefresh();
+  } else {
+    _stopRiskTabRefresh();
+  }
+
+  // 개요 탭에서 매크로 서머리 업데이트
+  if (id === "overview" && _macroCache.data) {
+    setTimeout(() => _updateMacroSummary(_macroCache.data), 100);
+  }
 }
 
 
@@ -502,7 +514,10 @@ function renderOverview(el) {
           <div class="lbl">연간 배당</div><div class="big" style="color:var(--green)">${fU(Math.round(totalDiv))}</div>
           <div style="font-size:12px;color:var(--sub);margin-top:4px">월 ${fU(Math.round(totalDiv / 12))}</div></div>
       </div>
-      <div class="card" style="display:flex;flex-direction:column"><div class="lbl" style="margin-bottom:8px">포트폴리오별 수익률</div><div style="flex:1;position:relative"><canvas id="chRet"></canvas></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${_macroSummaryHTML()}
+        <div class="card" style="display:flex;flex-direction:column"><div class="lbl" style="margin-bottom:8px">포트폴리오별 수익률</div><div style="flex:1;position:relative"><canvas id="chRet"></canvas></div></div>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:${usdRatio}fr ${krwRatio}fr;gap:12px;margin-bottom:14px" id="tmGrid">
       <div class="card">
@@ -559,6 +574,9 @@ function renderOverview(el) {
       }
     }
   });
+
+  // 매크로 서머리 데이터 로드
+  setTimeout(() => loadMacroData(), 200);
 }
 
 
@@ -695,9 +713,9 @@ async function _fetchFREDFromJSON() {
   } catch { return {}; }
 }
 
-// ── Yahoo Finance fetch (보조 — 실시간 시세) ──
+// ── Yahoo Finance fetch (보조 — 실시간 시세 + 30일 히스토리) ──
 async function _fetchYahooQuote(sym) {
-  const u = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d&includePrePost=false`;
+  const u = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1mo&interval=1d&includePrePost=false`;
   for (const p of [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
     `https://corsproxy.io/?${encodeURIComponent(u)}`
@@ -715,7 +733,14 @@ async function _fetchYahooQuote(sym) {
       const price = m?.regularMarketPrice;
       const prev = m?.chartPreviousClose || m?.previousClose;
       const chg = (price && prev) ? (price - prev) : null;
-      return { value: price, prev, chg, date: new Date().toISOString().slice(0,10) };
+      // 히스토리 추출
+      const timestamps = res.timestamp || [];
+      const closes = res.indicators?.quote?.[0]?.close || [];
+      const history = timestamps.map((ts, i) => {
+        const d = new Date(ts * 1000).toISOString().slice(0, 10);
+        return closes[i] != null ? { d, v: closes[i] } : null;
+      }).filter(Boolean);
+      return { value: price, prev, chg, date: new Date().toISOString().slice(0,10), history };
     } catch {}
   }
   return null;
@@ -875,7 +900,263 @@ async function loadMacroData() {
   try {
     const data = await fetchMacroIndicators();
     _updateMacroDOM(data);
+    _updateMacroSummary(data);
   } catch { /* silent */ }
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   매크로 리스크 서머리 (메인 대시보드용) + 팝업
+   ═══════════════════════════════════════════════════════ */
+
+// ── 전체 매크로 위험 수준 계산 ──
+function _calcMacroRiskLevel(data) {
+  if (!data) return { level: "로딩중", color: "var(--mute)", danger: 0, warn: 0, ok: 0, total: 0 };
+  let danger = 0, warn = 0, ok = 0, total = 0;
+  for (const [k, info] of Object.entries(FRED_SERIES)) {
+    const d = data[k];
+    if (!d || d.value == null) continue;
+    total++;
+    const sig = _mSignal(d.value, info.danger);
+    if (sig.level === "danger") danger++;
+    else if (sig.level === "warn") warn++;
+    else ok++;
+  }
+  for (const [k, info] of Object.entries(YAHOO_SYMBOLS)) {
+    const d = data["Y_" + k];
+    if (!d || d.value == null) continue;
+    total++;
+    const sig = _mSignal(d.value, info.danger);
+    if (sig.level === "danger") danger++;
+    else if (sig.level === "warn") warn++;
+    else ok++;
+  }
+  let level, color;
+  if (danger >= 3) { level = "위험"; color = "var(--red)"; }
+  else if (danger >= 1 || warn >= 3) { level = "주의"; color = "var(--amber)"; }
+  else { level = "양호"; color = "var(--green)"; }
+  return { level, color, danger, warn, ok, total };
+}
+
+// ── 서머리 카드 HTML (메인 대시보드에 삽입) ──
+function _macroSummaryHTML() {
+  return `<div class="card macro-summary-card" id="macroSummaryCard" style="cursor:pointer;border-left:3px solid var(--mute);transition:border-color .3s" onclick="openMacroPopup()">
+    <div class="topline" style="background:linear-gradient(90deg,var(--purple),var(--blue),transparent)"></div>
+    <div class="lbl">매크로 리스크</div>
+    <div id="macroSummLevel" class="big" style="color:var(--mute);font-size:24px">—</div>
+    <div id="macroSummDetail" style="font-size:11px;color:var(--mute);margin-top:4px">데이터 로딩중...</div>
+    <div style="font-size:9px;color:var(--mute);margin-top:6px">탭하여 상세보기 →</div>
+  </div>`;
+}
+
+function _updateMacroSummary(data) {
+  const r = _calcMacroRiskLevel(data);
+  const el = document.getElementById("macroSummLevel");
+  const det = document.getElementById("macroSummDetail");
+  const card = document.getElementById("macroSummaryCard");
+  if (!el) return;
+  el.textContent = r.level;
+  el.style.color = r.color;
+  det.innerHTML = `<span style="color:var(--red)">위험 ${r.danger}</span> · <span style="color:var(--amber)">주의 ${r.warn}</span> · <span style="color:var(--green)">양호 ${r.ok}</span>`;
+  if (card) card.style.borderLeftColor = r.color;
+}
+
+// ── 매크로 팝업 (차트 포함) ──
+function openMacroPopup() {
+  if (document.getElementById("macroPopupOverlay")) return;
+  const data = _macroCache.data;
+
+  const cats = [
+    { id: "rate",   icon: "💵", title: "금리 & 유동성",       color: "#4d9aff" },
+    { id: "econ",   icon: "🏭", title: "경기 & 펀더멘털",     color: "#2ee0a8" },
+    { id: "credit", icon: "🔗", title: "신용 & 위험 프리미엄",  color: "#ffc05c" },
+    { id: "senti",  icon: "🧠", title: "심리 & 시장",         color: "#ae82ff" },
+  ];
+
+  let catHTML = cats.map(cat => {
+    const fredItems = Object.entries(FRED_SERIES).filter(([,v]) => v.cat === cat.id);
+    const yahooItems = Object.entries(YAHOO_SYMBOLS).filter(([,v]) => v.cat === cat.id);
+    const items = [...fredItems.map(([k,info]) => ({ k, info, val: data?.[k] })),
+                   ...yahooItems.map(([k,info]) => ({ k: "Y_"+k, info, val: data?.["Y_"+k] }))];
+
+    return `<div style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid ${cat.color}30">
+        <span style="font-size:15px">${cat.icon}</span>
+        <span style="font-size:13px;font-weight:800;color:${cat.color}">${cat.title}</span>
+      </div>
+      ${items.map(item => {
+        const sig = item.val ? _mSignal(item.val.value, item.info.danger) : { color: "var(--mute)" };
+        const hasHistory = item.val?.history?.length > 2;
+        return `<div style="margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:8px;height:8px;border-radius:50%;background:${sig.color};flex-shrink:0"></span>
+              <span style="font-size:12px;font-weight:700;color:var(--txt)">${item.info.label}</span>
+            </div>
+            <div style="text-align:right">
+              <span style="font-size:14px;font-weight:800;color:var(--txt);font-family:monospace">${item.val ? _mFmt(item.val.value, item.info.unit) : "—"}</span>
+              ${item.val ? _mChgHTML(item.val.chg, item.info.unit) : ""}
+            </div>
+          </div>
+          <div style="height:80px;margin-top:2px;background:var(--s1);border-radius:8px;padding:4px;overflow:hidden">
+            ${hasHistory ? `<canvas id="mchart_${item.k}" style="width:100%;height:100%"></canvas>` : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--mute)">히스토리 데이터 없음</div>`}
+          </div>
+        </div>`;
+      }).join("")}
+    </div>`;
+  }).join("");
+
+  // 전체 리스크 요약
+  const risk = _calcMacroRiskLevel(data);
+
+  const overlay = document.createElement("div");
+  overlay.id = "macroPopupOverlay";
+  overlay.className = "rs-overlay";
+  overlay.onclick = e => { if (e.target === overlay) closeMacroPopup(); };
+  overlay.innerHTML = `<div class="rs-popup" style="max-width:700px">
+    <div class="rs-popup-head">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">🌐</span>
+        <div>
+          <div style="font-size:14px;font-weight:800;color:var(--txt)">매크로 리스크 대시보드</div>
+          <div style="font-size:10px;color:var(--mute)">${Object.keys(FRED_SERIES).length + Object.keys(YAHOO_SYMBOLS).length}개 지표 · 추세 차트</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="text-align:center;padding:4px 12px;border-radius:8px;background:${risk.color}18;border:1px solid ${risk.color}40">
+          <div style="font-size:16px;font-weight:900;color:${risk.color}">${risk.level}</div>
+          <div style="font-size:8px;color:var(--mute)">종합 판단</div>
+        </div>
+        <button class="rs-popup-close" onclick="closeMacroPopup()">✕</button>
+      </div>
+    </div>
+    <div class="rs-popup-body">${catHTML}</div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // 차트 렌더링
+  setTimeout(() => _renderMacroCharts(data), 50);
+}
+
+function closeMacroPopup() {
+  const el = document.getElementById("macroPopupOverlay");
+  if (el) { el.remove(); _macroPopupCharts.forEach(c => c.destroy()); _macroPopupCharts = []; }
+}
+
+let _macroPopupCharts = [];
+
+function _renderMacroCharts(data) {
+  if (!data) return;
+  const allItems = [
+    ...Object.entries(FRED_SERIES).map(([k, info]) => ({ k, info, val: data[k] })),
+    ...Object.entries(YAHOO_SYMBOLS).map(([k, info]) => ({ k: "Y_"+k, info, val: data["Y_"+k] })),
+  ];
+  allItems.forEach(item => {
+    const canvasEl = document.getElementById("mchart_" + item.k);
+    if (!canvasEl || !item.val?.history?.length) return;
+    const hist = item.val.history;
+    const labels = hist.map(h => h.d.slice(5)); // MM-DD
+    const values = hist.map(h => h.v);
+
+    // 위험 임계선
+    const dangerStr = item.info.danger.toLowerCase();
+    let thresholdVal = null;
+    if (dangerStr.includes(">")) {
+      thresholdVal = parseFloat(dangerStr.replace(/[^0-9.\-]/g, ""));
+    } else if (dangerStr.includes("< 0") || dangerStr.includes("역전")) {
+      thresholdVal = 0;
+    } else if (dangerStr.includes("< 50")) {
+      thresholdVal = 50;
+    }
+
+    const datasets = [{
+      data: values,
+      borderColor: "#4d9aff",
+      backgroundColor: "rgba(77,154,255,0.1)",
+      fill: true, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+    }];
+    if (thresholdVal !== null) {
+      datasets.push({
+        data: Array(values.length).fill(thresholdVal),
+        borderColor: "rgba(255,107,120,0.5)",
+        borderDash: [4, 3], pointRadius: 0, borderWidth: 1, fill: false,
+      });
+    }
+
+    const chart = new Chart(canvasEl, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: { legend: { display: false }, tooltip: {
+          callbacks: { label: ctx => ctx.datasetIndex === 0 ? _mFmt(ctx.raw, item.info.unit) : "임계선" }
+        }},
+        scales: {
+          x: { display: false },
+          y: { ticks: { color: "#5e82a8", font: { size: 8 }, maxTicksLimit: 3 }, grid: { color: "#1f3a6215" } }
+        }
+      }
+    });
+    _macroPopupCharts.push(chart);
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   시장 운영시간 감지 & 리스크탭 3분 자동 새로고침
+   ═══════════════════════════════════════════════════════ */
+
+function _isUSMarketOpen() {
+  // 미국 동부시간(ET) 기준 월~금 09:30~16:00
+  // 한국시간(KST) = ET + 14시간 (서머타임시 +13)
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const et = new Date(utc - 5 * 3600000); // EST (대략적)
+  const day = et.getDay();
+  if (day === 0 || day === 6) return false;
+  const hm = et.getHours() * 100 + et.getMinutes();
+  return hm >= 930 && hm <= 1600;
+}
+
+function _isKRMarketOpen() {
+  // 한국시간(KST) 기준 월~금 09:00~15:30
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const kst = new Date(utc + 9 * 3600000);
+  const day = kst.getDay();
+  if (day === 0 || day === 6) return false;
+  const hm = kst.getHours() * 100 + kst.getMinutes();
+  return hm >= 900 && hm <= 1530;
+}
+
+let _riskRefreshTimer = null;
+
+function _startRiskTabRefresh() {
+  _stopRiskTabRefresh();
+  _riskRefreshTimer = setInterval(() => {
+    if (activeTab === "us-risk") {
+      if (_isUSMarketOpen()) {
+        console.log("[Risk] 미장 열림 → 리스크 데이터 리프레쉬");
+        rsLoadUS();
+        loadMacroData();
+      } else {
+        console.log("[Risk] 미장 마감 → 리프레쉬 스킵");
+      }
+    } else if (activeTab === "kr-risk") {
+      if (_isKRMarketOpen()) {
+        console.log("[Risk] 국장 열림 → 리스크 데이터 리프레쉬");
+        rsLoadKR();
+        loadMacroData();
+      } else {
+        console.log("[Risk] 국장 마감 → 리프레쉬 스킵");
+      }
+    }
+  }, 180000); // 3분
+}
+
+function _stopRiskTabRefresh() {
+  if (_riskRefreshTimer) { clearInterval(_riskRefreshTimer); _riskRefreshTimer = null; }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -889,6 +1170,7 @@ function renderUSRisk(el) {
     { label: "배당형 DIVIDEND", color: "var(--green)", icon: "💰", items: P.dividend },
     { label: "성장주 GROWTH", color: "var(--purple)", icon: "🚀", items: P.growth },
   ];
+  const mktOpen = _isUSMarketOpen();
 
   el.innerHTML = `<div class="section">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:10px 16px;background:var(--s1);border-radius:11px;border:1px solid var(--bdr)">
@@ -896,6 +1178,7 @@ function renderUSRisk(el) {
         <span style="font-size:16px">🌎</span>
         <span style="font-size:13px;font-weight:800;color:var(--txt)">미국 시장 실시간 리스크 모니터</span>
         <span style="font-size:10px;color:var(--mute)">${usStocks.length}개 종목</span>
+        <span style="font-size:9px;padding:2px 8px;border-radius:5px;font-weight:700;background:${mktOpen ? "rgba(46,224,168,0.15)" : "rgba(255,107,120,0.12)"};color:${mktOpen ? "var(--green)" : "var(--red)"}">${mktOpen ? "장 운영중 · 3분 자동갱신" : "장 마감 · 갱신 중지"}</span>
       </div>
       <div id="rsStatusUS" style="display:flex;align-items:center;gap:6px">
         <span class="rs-dot-load"></span>
@@ -927,6 +1210,7 @@ function renderKRRisk(el) {
     items: krStocks.filter(h => krSectorOf(h.ticker)?.id === sec.id),
   }));
   const uncategorized = krStocks.filter(h => !krSectorOf(h.ticker));
+  const mktOpen = _isKRMarketOpen();
 
   el.innerHTML = `<div class="section">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:10px 16px;background:var(--s1);border-radius:11px;border:1px solid var(--bdr)">
@@ -934,6 +1218,7 @@ function renderKRRisk(el) {
         <span style="font-size:16px">📡</span>
         <span style="font-size:13px;font-weight:800;color:var(--txt)">국내 시장 실시간 리스크 모니터</span>
         <span style="font-size:10px;color:var(--mute)">${krStocks.length}개 종목</span>
+        <span style="font-size:9px;padding:2px 8px;border-radius:5px;font-weight:700;background:${mktOpen ? "rgba(46,224,168,0.15)" : "rgba(255,107,120,0.12)"};color:${mktOpen ? "var(--green)" : "var(--red)"}">${mktOpen ? "장 운영중 · 3분 자동갱신" : "장 마감 · 갱신 중지"}</span>
       </div>
       <div id="rsStatusKR" style="display:flex;align-items:center;gap:6px">
         <span class="rs-dot-load"></span>
