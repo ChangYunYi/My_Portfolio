@@ -330,9 +330,27 @@ async function startRSSentinel() {
   rsLoadUS();
   rsLoadKR();
 
-  // 3분마다 자동 갱신 (2초 오프셋으로 API 충돌 방지)
-  setInterval(rsLoadUS, 180000);
-  setInterval(rsLoadKR, 182000);
+  // 장중 3분 / 장외 30분 적응형 갱신
+  setInterval(() => {
+    const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    // 미장: ET 기준 월~금 09:30~16:00
+    const et = new Date(utc - 5 * 3600000);
+    const usOpen = et.getDay() >= 1 && et.getDay() <= 5 && (et.getHours() * 100 + et.getMinutes()) >= 930 && (et.getHours() * 100 + et.getMinutes()) <= 1600;
+    if (usOpen || !RS_US._lastLoad || (Date.now() - RS_US._lastLoad >= 1800000)) {
+      RS_US._lastLoad = Date.now();
+      rsLoadUS();
+    }
+  }, 180000);
+  setInterval(() => {
+    const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    // 한장: KST 기준 월~금 09:00~15:30
+    const kst = new Date(utc + 9 * 3600000);
+    const krOpen = kst.getDay() >= 1 && kst.getDay() <= 5 && (kst.getHours() * 100 + kst.getMinutes()) >= 900 && (kst.getHours() * 100 + kst.getMinutes()) <= 1530;
+    if (krOpen || !RS_KR._lastLoad || (Date.now() - RS_KR._lastLoad >= 1800000)) {
+      RS_KR._lastLoad = Date.now();
+      rsLoadKR();
+    }
+  }, 182000);
 
   // 8초마다 UI 점진적 갱신
   setInterval(() => {
