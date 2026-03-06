@@ -217,6 +217,11 @@ function switchTab(id) {
     _stopKRTabRefresh();
   }
 
+  // US 탭 이탈 시 US 리프레쉬 정지
+  if (id !== "index" && id !== "dividend" && id !== "growth") {
+    _stopUSTabRefresh();
+  }
+
   // 개요 탭에서 매크로 서머리 업데이트
   if (id === "overview" && _macroCache.data) {
     setTimeout(() => _updateMacroSummary(_macroCache.data), 100);
@@ -325,11 +330,16 @@ function renderTreemap(cid, data, fmt) {
    공용 UI 컴포넌트
    ═══════════════════════════════════════════════════════ */
 
-/** 종목 테이블 HTML 생성 */
+/** 종목 테이블 HTML 생성 (US: 스파크라인 + 리스크 배지 + 행 발광 포함) */
 function mkTable(items, isKR) {
-  const heads = ["종목", "현재가", "일변동", "수익률", "평가금", "배당률", "BB(20)", "BB(252)", "RSI", "MDD"];
-  return `<div class="tbl-wrap"><table>
-    <thead><tr>${heads.map((h, i) => `<th${i === 0 ? ' style="text-align:left"' : ''}>${h}</th>`).join("")}</tr></thead>
+  const heads = ["종목", "차트", "현재가", "일변동", "수익률", "평가금", "배당률", "BB(20)", "BB(252)", "RSI", "MDD"];
+  return `<div class="tbl-wrap"><table class="kr-tbl">
+    <colgroup>
+      <col style="width:130px"><col style="width:88px"><col style="width:90px"><col style="width:68px">
+      <col style="width:68px"><col style="width:100px"><col style="width:62px">
+      <col style="width:52px"><col style="width:56px"><col style="width:48px"><col style="width:56px">
+    </colgroup>
+    <thead><tr>${heads.map((h, i) => `<th${i === 0 ? ' style="text-align:left"' : i === 1 ? ' style="text-align:center"' : ''}>${h}</th>`).join("")}</tr></thead>
     <tbody>${items.map(h => {
       const cur = isKR ? h.cur.toLocaleString() : fUd(h.cur);
       const val = isKR ? fK(h.val) : fU(Math.round(h.val));
@@ -337,10 +347,18 @@ function mkTable(items, isKR) {
       const mc = Math.abs(h.mdd) >= 10 ? "var(--red)" : Math.abs(h.mdd) >= 5 ? "var(--amber)" : "var(--green)";
       const sigC = v => v >= 70 ? "var(--green)" : v <= 30 ? "var(--red)" : "var(--txt)";
       const st = isETF(h.ticker) ? "etf" : "stock";
-      return `<tr style="cursor:${isKR ? "default" : "pointer"}" data-ticker="${h.ticker}" data-market="${isKR ? "kr" : "us"}" data-name="${h.name}" data-type="${st}">
+      const sid = rsSafeId(h.ticker);
+      const prefix = isKR ? "kr" : "us";
+      return `<tr id="${prefix}row_${sid}" style="cursor:pointer;transition:background .3s,box-shadow .3s" data-ticker="${h.ticker}" data-market="${isKR ? "kr" : "us"}" data-name="${h.name}" data-type="${st}">
         <td style="text-align:left"><div style="font-weight:800;font-size:13px;color:var(--txt)">${h.name}</div><div style="font-size:10px;color:var(--sub)">${h.ticker} · ${isKR ? h.qty : h.qty % 1 ? h.qty.toFixed(2) : h.qty}주</div></td>
-        <td class="mono"><div>${cur}</div><div style="font-size:10px;color:var(--mute)">${isKR ? h.avg.toLocaleString() : fUd(h.avg)}</div></td>
-        <td><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
+        <td style="text-align:center;position:relative;padding:4px 2px">
+          <div id="${prefix}spark_${sid}" style="width:80px;height:26px;margin:0 auto;display:flex;align-items:center;justify-content:center">
+            <div class="kr-spark-placeholder"></div>
+          </div>
+          <div id="${prefix}badge_${sid}" style="position:absolute;top:0;right:2px"></div>
+        </td>
+        <td class="mono" id="${prefix}price_${sid}"><div class="kr-cur">${cur}</div><div style="font-size:10px;color:var(--mute)">${isKR ? h.avg.toLocaleString() : fUd(h.avg)}</div></td>
+        <td id="${prefix}daily_${sid}"><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
         <td style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
         <td><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
         <td><span style="color:${h.divY >= 3 ? "var(--green)" : h.divY >= 1 ? "var(--amber)" : "var(--sub)"};font-weight:700;font-size:12px">${h.divY.toFixed(2)}%</span></td>
@@ -614,6 +632,8 @@ function renderIndex(el) {
     </div>
     <div class="card">${mkTable(P.index, false)}</div></div>`;
   mkPriceTrendChart("chIdxTrend", TICKER_MAP.index);
+  setTimeout(() => _updateUSTableRS(), 100);
+  _startUSTabRefresh();
 }
 
 function renderDividend(el) {
@@ -637,6 +657,8 @@ function renderDividend(el) {
     </div>
     <div class="card">${mkTable(P.dividend, false)}</div></div>`;
   mkPriceTrendChart("chDivTrend", TICKER_MAP.dividend);
+  setTimeout(() => _updateUSTableRS(), 100);
+  _startUSTabRefresh();
 }
 
 function renderGrowth(el) {
@@ -659,6 +681,8 @@ function renderGrowth(el) {
     </div>
     <div class="card">${mkTable(P.growth, false)}</div></div>`;
   mkPriceTrendChart("chGroTrend", TICKER_MAP.growth);
+  setTimeout(() => _updateUSTableRS(), 100);
+  _startUSTabRefresh();
 }
 
 function renderKR(el) {
@@ -798,6 +822,78 @@ function _updateKRTableRS() {
       statusEl.innerHTML = `<span style="color:${hasRisk ? "var(--red)" : "var(--green)"}">${hasRisk ? "⚠ 리스크 감지" : "✓ 정상"}</span> · ${st.lastUp.toLocaleTimeString("ko-KR")}`;
     }
   }
+}
+
+/** US 테이블(지수/배당/성장)에 RS 데이터 점진 반영 */
+function _updateUSTableRS() {
+  const tabItems = { index: P.index, dividend: P.dividend, growth: P.growth };
+  const items = tabItems[activeTab];
+  if (!items) return;
+
+  items.forEach(h => {
+    if (!h.ticker) return;
+    const d = RS_US.data[h.ticker];
+    const sid = rsSafeId(h.ticker);
+    const sparkEl = document.getElementById("usspark_" + sid);
+    const badgeEl = document.getElementById("usbadge_" + sid);
+    const row = document.getElementById("usrow_" + sid);
+    const priceEl = document.getElementById("usprice_" + sid);
+    const dailyEl = document.getElementById("usdaily_" + sid);
+    if (!sparkEl) return;
+
+    // 스파크라인 (US: 최근 40일 일봉)
+    if (d?.closes?.length > 2) {
+      sparkEl.innerHTML = mkSparkSVG(d.closes, 80, 26);
+    } else if (d?.loading) {
+      sparkEl.innerHTML = '<div class="kr-spark-placeholder"></div>';
+    } else if (d?.error) {
+      sparkEl.innerHTML = '<span style="font-size:8px;color:var(--mute)">—</span>';
+    }
+
+    // 현재가 + 일변동 업데이트
+    if (d?.loaded && d.price > 0 && priceEl) {
+      priceEl.querySelector(".kr-cur").textContent = "$" + d.price.toFixed(2);
+      if (dailyEl && typeof d.changePct === "number") {
+        dailyEl.innerHTML = `<span class="${bc(d.changePct)}">${fP(d.changePct)}</span>`;
+      }
+    }
+
+    // 리스크 배지
+    if (badgeEl) {
+      const cnt = d?.risks?.length || 0;
+      if (cnt > 0) {
+        badgeEl.innerHTML = `<span class="rs-cnt-badge rs-cnt-risk" style="position:static;font-size:8px;min-width:15px;height:15px;border-radius:8px">${cnt}</span>`;
+      } else if (d?.loaded) {
+        badgeEl.innerHTML = `<span style="font-size:8px;color:var(--green);font-weight:700">✓</span>`;
+      } else {
+        badgeEl.innerHTML = '';
+      }
+    }
+
+    // 행 발광
+    if (row) {
+      if (d?.risks?.length > 0) {
+        row.classList.add("kr-risk-glow");
+      } else {
+        row.classList.remove("kr-risk-glow");
+      }
+    }
+  });
+}
+
+/** US 탭 RS 데이터 자동 반영 타이머 */
+let _usTabRefreshTimer = null;
+
+function _startUSTabRefresh() {
+  _stopUSTabRefresh();
+  _usTabRefreshTimer = setInterval(() => {
+    if (activeTab !== "index" && activeTab !== "dividend" && activeTab !== "growth") { _stopUSTabRefresh(); return; }
+    _updateUSTableRS();
+  }, 8000);
+}
+
+function _stopUSTabRefresh() {
+  if (_usTabRefreshTimer) { clearInterval(_usTabRefreshTimer); _usTabRefreshTimer = null; }
 }
 
 /** 국내 탭 3분 장중 자동갱신 */
