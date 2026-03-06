@@ -648,69 +648,244 @@ function renderKR(el) {
 
 
 /* ═══════════════════════════════════════════════════════
-   매크로 리스크 지표 패널
+   매크로 리스크 지표 패널 — FRED + Yahoo Finance
    ═══════════════════════════════════════════════════════ */
 
+// ── FRED 시리즈 정의 ──
+const FRED_SERIES = {
+  // 금리 & 유동성
+  DGS10:       { label: "미국채 10Y 금리",         unit: "%",   cat: "rate",   danger: "> 5%",      src: "FRED" },
+  DGS2:        { label: "미국채 2Y 금리",          unit: "%",   cat: "rate",   danger: "> 5%",      src: "FRED" },
+  T10Y2Y:      { label: "장단기 금리차 (10Y-2Y)",  unit: "%p",  cat: "rate",   danger: "< 0 (역전)", src: "FRED" },
+  DFEDTARU:    { label: "연준 기준금리 (상단)",     unit: "%",   cat: "rate",   danger: "급격한 인상", src: "FRED" },
+  DFII10:      { label: "10Y 실질금리 (TIPS)",     unit: "%",   cat: "rate",   danger: "> 2.5%",    src: "FRED" },
+  WM2NS:       { label: "M2 통화량",              unit: "B$",  cat: "rate",   danger: "전년비 감소", src: "FRED" },
+  // 경기 & 펀더멘털
+  MPMISM:      { label: "ISM 제조업 PMI",         unit: "",    cat: "econ",   danger: "< 50 (위축)", src: "FRED" },
+  UMCSENT:     { label: "미시간 소비자심리지수",    unit: "",    cat: "econ",   danger: "급락",       src: "FRED" },
+  UNRATE:      { label: "실업률",                 unit: "%",   cat: "econ",   danger: "급등",       src: "FRED" },
+  CPIAUCSL:    { label: "CPI (소비자물가지수)",    unit: "",    cat: "econ",   danger: "전년비 > 4%", src: "FRED" },
+  SP500:       { label: "S&P 500",               unit: "",    cat: "econ",   danger: "급락",       src: "FRED" },
+  // 신용 & 위험 프리미엄
+  BAMLH0A0HYM2:{ label: "하이일드 스프레드 (OAS)", unit: "%",   cat: "credit", danger: "> 5%",      src: "FRED" },
+  TEDRATE:     { label: "TED 스프레드",           unit: "%",   cat: "credit", danger: "> 1%",      src: "FRED" },
+  DTWEXBGS:    { label: "달러 무역가중지수",       unit: "",    cat: "credit", danger: "급등",       src: "FRED" },
+  BAMLC0A4CBBB:{ label: "BBB 회사채 스프레드",    unit: "%",   cat: "credit", danger: "> 3%",      src: "FRED" },
+  // 심리 & 시장
+  VIXCLS:      { label: "VIX (공포지수)",         unit: "",    cat: "senti",  danger: "> 30",      src: "FRED" },
+  DCOILWTICO:  { label: "WTI 원유",              unit: "$",   cat: "senti",  danger: "급등/급락",   src: "FRED" },
+  GOLDAMGBD228NLBM: { label: "금 현물 (런던 PM)", unit: "$",   cat: "senti",  danger: "급등 → 위험회피", src: "FRED" },
+};
+
+// ── Yahoo Finance 보조 심볼 ──
+const YAHOO_SYMBOLS = {
+  dxy:  { sym: "DX-Y.NYB", label: "달러 인덱스 (DXY)", unit: "", cat: "credit", danger: "급등 → 신흥국 압박", src: "Yahoo" },
+  hyg:  { sym: "HYG",      label: "HY 채권 ETF (HYG)", unit: "$", cat: "credit", danger: "급락 → 신용위험",    src: "Yahoo" },
+};
+
+let _macroCache = { data: null, ts: 0 };
+
+// ── FRED API fetch ──
+async function _fetchFRED(seriesId) {
+  try {
+    const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=2`;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 12000);
+    const r = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const obs = j?.observations?.filter(o => o.value !== ".");
+    if (!obs?.length) return null;
+    const cur = { value: parseFloat(obs[0].value), date: obs[0].date };
+    const prev = obs.length > 1 ? { value: parseFloat(obs[1].value), date: obs[1].date } : null;
+    const chg = prev ? cur.value - prev.value : null;
+    return { ...cur, prev: prev?.value, chg };
+  } catch { return null; }
+}
+
+// ── Yahoo Finance fetch (보조) ──
+async function _fetchYahooQuote(sym) {
+  const u = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d&includePrePost=false`;
+  for (const p of [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    `https://corsproxy.io/?${encodeURIComponent(u)}`
+  ]) {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(p, { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (!r.ok) continue;
+      const j = await r.json();
+      const res = j?.chart?.result?.[0];
+      if (!res) continue;
+      const m = res.meta;
+      const price = m?.regularMarketPrice;
+      const prev = m?.chartPreviousClose || m?.previousClose;
+      const chg = (price && prev) ? (price - prev) : null;
+      return { value: price, prev, chg, date: new Date().toISOString().slice(0,10) };
+    } catch {}
+  }
+  return null;
+}
+
+// ── 전체 매크로 데이터 로드 ──
+async function fetchMacroIndicators() {
+  if (_macroCache.data && Date.now() - _macroCache.ts < 300000) return _macroCache.data;
+  const results = {};
+
+  // FRED 병렬 fetch
+  const fredKeys = Object.keys(FRED_SERIES);
+  const fredFetches = fredKeys.map(async k => { results[k] = await _fetchFRED(k); });
+
+  // Yahoo 병렬 fetch
+  const yahooKeys = Object.keys(YAHOO_SYMBOLS);
+  const yahooFetches = yahooKeys.map(async k => { results["Y_" + k] = await _fetchYahooQuote(YAHOO_SYMBOLS[k].sym); });
+
+  await Promise.allSettled([...fredFetches, ...yahooFetches]);
+  _macroCache = { data: results, ts: Date.now() };
+  return results;
+}
+
+// ── 값 포맷 헬퍼 ──
+function _mFmt(v, unit) {
+  if (v == null || isNaN(v)) return "—";
+  if (unit === "B$") return "$" + (v / 1000).toFixed(1) + "T";
+  if (unit === "$") return "$" + Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+  if (unit === "%" || unit === "%p") return v.toFixed(2) + unit;
+  return Number(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function _mChgHTML(chg, unit) {
+  if (chg == null || isNaN(chg)) return "";
+  const arrow = chg >= 0 ? "▲" : "▼";
+  const color = chg >= 0 ? "var(--green)" : "var(--red)";
+  const fmt = (unit === "%" || unit === "%p") ? Math.abs(chg).toFixed(2) + unit : Math.abs(chg).toFixed(2);
+  return `<span style="font-size:9px;color:${color};margin-left:4px">${arrow}${fmt}</span>`;
+}
+
+function _mSignal(value, danger) {
+  if (value == null || isNaN(value)) return { level: "none", color: "var(--mute)" };
+  const d = danger.toLowerCase();
+  if (d.includes(">")) {
+    const th = parseFloat(d.replace(/[^0-9.\-]/g, ""));
+    if (!isNaN(th) && value > th) return { level: "danger", color: "var(--red)" };
+    if (!isNaN(th) && value > th * 0.85) return { level: "warn", color: "var(--amber)" };
+    return { level: "ok", color: "var(--green)" };
+  }
+  if (d.includes("< 0") || d.includes("역전")) {
+    if (value < 0) return { level: "danger", color: "var(--red)" };
+    if (value < 0.3) return { level: "warn", color: "var(--amber)" };
+    return { level: "ok", color: "var(--green)" };
+  }
+  if (d.includes("< 50")) {
+    if (value < 50) return { level: "danger", color: "var(--red)" };
+    if (value < 52) return { level: "warn", color: "var(--amber)" };
+    return { level: "ok", color: "var(--green)" };
+  }
+  return { level: "none", color: "var(--mute)" };
+}
+
+// ── 카드 한 장 (카테고리별) HTML ──
+function _mCardRow(id, info, data) {
+  const d = data?.[id];
+  const val = d?.value;
+  const sig = _mSignal(val, info.danger);
+  const dotColor = d ? sig.color : "var(--mute)";
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(31,58,98,0.25)">
+    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+      <span style="width:6px;height:6px;border-radius:50%;background:${dotColor};flex-shrink:0"></span>
+      <div style="min-width:0">
+        <div style="font-size:11px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${info.label}</div>
+        <div style="font-size:9px;color:var(--mute)">${info.src}${d?.date ? " · " + d.date : ""}</div>
+      </div>
+    </div>
+    <div style="text-align:right;flex-shrink:0;margin-left:8px">
+      <div id="mv_${id}" style="font-size:13px;font-weight:700;color:${d ? "var(--txt)" : "var(--mute)"};font-family:'SF Mono',monospace">${d ? _mFmt(val, info.unit) : '<span class="rs-dot-load" style="width:4px;height:4px"></span>'}</div>
+      <div style="font-size:9px">${d ? _mChgHTML(d.chg, info.unit) : ""}</div>
+    </div>
+  </div>`;
+}
+
+function _mYahooRow(id, info, data) {
+  const d = data?.["Y_" + id];
+  return _mCardRow("Y_" + id, info, data ? { ["Y_" + id]: d } : null);
+}
+
 function _macroRiskHTML() {
-  const tblStyle = `style="width:100%;border-collapse:collapse;font-size:11px"`;
-  const thStyle = `style="text-align:left;padding:7px 10px;border-bottom:2px solid var(--bdr);color:var(--mute);font-weight:700;font-size:10px;letter-spacing:0.5px"`;
-  const tdStyle = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);color:var(--txt)"`;
-  const tdDanger = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);color:var(--red);font-size:10px"`;
-  const secHead = (icon, title, color) =>
-    `<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
-      <span style="font-size:14px">${icon}</span>
-      <span style="font-size:12px;font-weight:800;color:${color};letter-spacing:0.5px">${title}</span>
-      <div style="flex:1;height:1px;background:linear-gradient(90deg,${color}30,transparent)"></div>
-    </div>`;
+  const cats = [
+    { id: "rate",   icon: "💵", title: "금리 & 유동성",       color: "var(--blue)",   dangerNote: "금리 급등·유동성 축소 시 위험" },
+    { id: "econ",   icon: "🏭", title: "경기 & 펀더멘털",     color: "var(--green)",  dangerNote: "PMI<50·실업률 급등 시 위험" },
+    { id: "credit", icon: "🔗", title: "신용 & 위험 프리미엄",  color: "var(--amber)",  dangerNote: "스프레드 확대·달러 급등 시 위험" },
+    { id: "senti",  icon: "🧠", title: "심리 & 시장",         color: "var(--purple)", dangerNote: "VIX>30·원자재 급변 시 위험" },
+  ];
 
   return `
-    <div class="card" style="margin-top:4px">
-      <div class="lbl" style="margin-bottom:6px">🌐 매크로 리스크 지표 (Macro Risk Indicators)</div>
+    <div style="margin-top:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px 16px;background:var(--s1);border-radius:11px;border:1px solid var(--bdr)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:16px">🌐</span>
+          <span style="font-size:13px;font-weight:800;color:var(--txt)">매크로 리스크 대시보드</span>
+          <span style="font-size:10px;color:var(--mute)">${Object.keys(FRED_SERIES).length + Object.keys(YAHOO_SYMBOLS).length}개 지표</span>
+        </div>
+        <div id="macroStatus" style="display:flex;align-items:center;gap:6px">
+          <span class="rs-dot-load"></span>
+          <span style="font-size:9px;color:var(--mute)">데이터 로딩중...</span>
+        </div>
+      </div>
 
-      ${secHead("💵", "금리 & 유동성", "var(--blue)")}
-      <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
-        <tbody>
-          <tr><td ${tdStyle}>미국채 장단기 금리차 (10Y-2Y)</td><td ${tdDanger}>역전 지속 → 경기침체 선행</td></tr>
-          <tr><td ${tdStyle}>연준 기준금리 / FOMC</td><td ${tdDanger}>예상 외 급격한 인상</td></tr>
-          <tr><td ${tdStyle}>실질금리 (TIPS)</td><td ${tdDanger}>실질금리 급등 → 성장주 밸류에이션 압박</td></tr>
-          <tr><td ${tdStyle}>M2 통화량</td><td ${tdDanger}>M2 감소 → 유동성 축소</td></tr>
-        </tbody>
-      </table>
+      <div class="macro-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+      ${cats.map(cat => {
+        const fredItems = Object.entries(FRED_SERIES).filter(([,v]) => v.cat === cat.id);
+        const yahooItems = Object.entries(YAHOO_SYMBOLS).filter(([,v]) => v.cat === cat.id);
+        return `
+        <div class="card" style="padding:14px 16px;border-left:3px solid ${cat.color}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:15px">${cat.icon}</span>
+            <span style="font-size:12px;font-weight:800;color:${cat.color}">${cat.title}</span>
+          </div>
+          <div style="font-size:9px;color:var(--mute);margin-bottom:10px;padding:4px 8px;background:rgba(255,107,120,0.08);border-radius:6px">⚠ ${cat.dangerNote}</div>
+          ${fredItems.map(([k, info]) => `<div id="mrow_${k}">${_mCardRow(k, info, null)}</div>`).join("")}
+          ${yahooItems.map(([k, info]) => `<div id="mrow_Y_${k}">${_mYahooRow(k, info, null)}</div>`).join("")}
+        </div>`;
+      }).join("")}
+      </div>
 
-      ${secHead("🏭", "경기 & 기업 펀더멘털", "var(--green)")}
-      <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
-        <tbody>
-          <tr><td ${tdStyle}>PMI (구매관리자지수)</td><td ${tdDanger}>PMI &lt; 50 (제조업 위축)</td></tr>
-          <tr><td ${tdStyle}>EPS 성장률</td><td ${tdDanger}>어닝 하향 조정 사이클 진입</td></tr>
-          <tr><td ${tdStyle}>PER / Shiller CAPE</td><td ${tdDanger}>CAPE &gt; 30 → 역사적 고평가 구간</td></tr>
-          <tr><td ${tdStyle}>기업 이익률 (Profit Margin)</td><td ${tdDanger}>마진 압박 → 실적 둔화 우려</td></tr>
-        </tbody>
-      </table>
-
-      ${secHead("🔗", "신용 & 위험 프리미엄", "var(--amber)")}
-      <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
-        <tbody>
-          <tr><td ${tdStyle}>하이일드 스프레드 (HY Spread)</td><td ${tdDanger}>스프레드 급확대 → 신용위험 증가</td></tr>
-          <tr><td ${tdStyle}>CDS 스프레드</td><td ${tdDanger}>특정 국가/기업 부도 위험 상승</td></tr>
-          <tr><td ${tdStyle}>TED 스프레드</td><td ${tdDanger}>은행 간 신용 경색</td></tr>
-          <tr><td ${tdStyle}>달러 인덱스 (DXY)</td><td ${tdDanger}>달러 급등 → 신흥국/원자재 압박</td></tr>
-        </tbody>
-      </table>
-
-      ${secHead("🧠", "심리 & 포지셔닝", "var(--purple)")}
-      <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
-        <tbody>
-          <tr><td ${tdStyle}>AAII 투자심리</td><td ${tdDanger}>강세론자 극단적 과잉</td></tr>
-          <tr><td ${tdStyle}>Put/Call Ratio</td><td ${tdDanger}>비율 급격 하락 (과도한 낙관)</td></tr>
-          <tr><td ${tdStyle}>CNN Fear & Greed Index</td><td ${tdDanger}>Extreme Greed 구간</td></tr>
-          <tr><td ${tdStyle}>COT 리포트</td><td ${tdDanger}>기관 포지션 대량 청산</td></tr>
-        </tbody>
-      </table>
+      <div style="margin-top:10px;padding:8px 14px;background:rgba(31,58,98,0.12);border-radius:8px;font-size:9px;color:var(--mute);line-height:1.7;display:flex;gap:20px;flex-wrap:wrap">
+        <span>📡 <b>FRED</b> — Federal Reserve Economic Data (api.stlouisfed.org)</span>
+        <span>📈 <b>Yahoo Finance</b> — 실시간 시세 (CORS proxy, ~15분 지연)</span>
+        <span>🔄 자동 캐시 5분 · 상태 신호등: <span style="color:var(--green)">●</span> 정상 <span style="color:var(--amber)">●</span> 주의 <span style="color:var(--red)">●</span> 위험</span>
+      </div>
     </div>`;
+}
+
+// ── DOM 업데이트 ──
+function _updateMacroDOM(data) {
+  // FRED 지표
+  for (const [k, info] of Object.entries(FRED_SERIES)) {
+    const row = document.getElementById("mrow_" + k);
+    if (row) row.innerHTML = _mCardRow(k, info, data);
+  }
+  // Yahoo 지표
+  for (const [k, info] of Object.entries(YAHOO_SYMBOLS)) {
+    const row = document.getElementById("mrow_Y_" + k);
+    if (row) row.innerHTML = _mYahooRow(k, info, data);
+  }
+  // 상태바
+  document.querySelectorAll("#macroStatus").forEach(el => {
+    const now = new Date();
+    const ts = `${now.getHours()}:${String(now.getMinutes()).padStart(2,"0")}`;
+    el.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span>
+      <span style="font-size:9px;color:var(--mute)">${ts} 업데이트 완료</span>`;
+  });
+}
+
+async function loadMacroData() {
+  try {
+    const data = await fetchMacroIndicators();
+    _updateMacroDOM(data);
+  } catch { /* silent */ }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -752,6 +927,7 @@ function renderUSRisk(el) {
     ${_macroRiskHTML()}
   </div>`;
   setTimeout(() => rsUpdateMonitor("us"), 0);
+  setTimeout(() => loadMacroData(), 100);
 }
 
 function renderKRRisk(el) {
@@ -800,6 +976,7 @@ function renderKRRisk(el) {
     ${_macroRiskHTML()}
   </div>`;
   setTimeout(() => rsUpdateMonitor("kr"), 0);
+  setTimeout(() => loadMacroData(), 100);
 }
 
 
