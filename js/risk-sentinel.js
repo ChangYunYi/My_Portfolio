@@ -277,6 +277,7 @@ async function rsProcessOne(mkt, portTicker, isKR) {
     if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
   } else {
     if (activeTab === "us-risk") rsUpdateMonitor(mkt);
+    if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
   }
 }
 
@@ -292,6 +293,7 @@ async function rsLoadUS() {
   RS_US.status.lastUp = new Date();
   rsUpdateStatus("us");
   if (activeTab === "us-risk") rsUpdateMonitor("us");
+  if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
 }
 
 async function rsLoadKR() {
@@ -341,6 +343,7 @@ async function startRSSentinel() {
     rsUpdateStatus("kr");
     if (activeTab === "us-risk") rsUpdateMonitor("us");
     if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
+    if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
   }, 8000);
 }
 
