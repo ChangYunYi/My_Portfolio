@@ -350,6 +350,17 @@ tr:hover td { background: rgba(24, 47, 82, 0.5); }
 
   /* 매크로 리스크 그리드 모바일 대응 */
   .macro-grid { grid-template-columns: 1fr !important; }
+  /* 매크로 서머리 영역 모바일 대응 */
+  .macro-summary-card + .card { margin-top: 0; }
+}
+
+/* ── 매크로 서머리 카드 ── */
+.macro-summary-card {
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.3s;
+}
+.macro-summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
 
 @media (max-width: 600px) {
