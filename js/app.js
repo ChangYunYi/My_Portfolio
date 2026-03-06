@@ -730,10 +730,10 @@ function _updateKRTableRS() {
       }
     }
 
-    // 행 발광 (high/critical 레벨만)
+    // 행 발광 (critical 레벨만)
     if (row) {
-      const hasHighRisk = d?.risks?.some(r => r.sev === "high" || r.sev === "critical");
-      if (hasHighRisk) {
+      const hasCriticalRisk = d?.risks?.some(r => r.sev === "critical");
+      if (hasCriticalRisk) {
         row.classList.add("kr-risk-glow");
       } else {
         row.classList.remove("kr-risk-glow");
@@ -800,10 +800,10 @@ function _updateUSTableRS() {
       }
     }
 
-    // 행 발광 (high/critical 레벨만)
+    // 행 발광 (critical 레벨만)
     if (row) {
-      const hasHighRisk = d?.risks?.some(r => r.sev === "high" || r.sev === "critical");
-      if (hasHighRisk) {
+      const hasCriticalRisk = d?.risks?.some(r => r.sev === "critical");
+      if (hasCriticalRisk) {
         row.classList.add("kr-risk-glow");
       } else {
         row.classList.remove("kr-risk-glow");
