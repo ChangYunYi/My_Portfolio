@@ -347,6 +347,9 @@ tr:hover td { background: rgba(24, 47, 82, 0.5); }
   [style*="grid-template-columns: 1.8fr"] { grid-template-columns: 1fr !important; height: auto !important; }
   #tmGrid  { grid-template-columns: 1fr !important; }
   #topGrid { grid-template-columns: 1fr !important; }
+
+  /* 매크로 리스크 그리드 모바일 대응 */
+  .macro-grid { grid-template-columns: 1fr !important; }
 }
 
 @media (max-width: 600px) {
