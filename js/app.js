@@ -648,69 +648,199 @@ function renderKR(el) {
 
 
 /* ═══════════════════════════════════════════════════════
-   매크로 리스크 지표 패널
+   매크로 리스크 지표 패널 — 실시간 데이터 + 출처
    ═══════════════════════════════════════════════════════ */
+
+// Yahoo Finance 심볼 → 매크로 지표 매핑
+const MACRO_SYMBOLS = {
+  tnx:  { sym: "^TNX",     label: "미국채 10Y 금리",        unit: "%",  src: "Yahoo Finance (^TNX)" },
+  tyx:  { sym: "^TYX",     label: "미국채 30Y 금리",        unit: "%",  src: "Yahoo Finance (^TYX)" },
+  irx:  { sym: "^IRX",     label: "미국채 13주 T-Bill",     unit: "%",  src: "Yahoo Finance (^IRX)" },
+  vix:  { sym: "^VIX",     label: "VIX (공포지수)",         unit: "",   src: "Yahoo Finance (^VIX)" },
+  dxy:  { sym: "DX-Y.NYB", label: "달러 인덱스 (DXY)",      unit: "",   src: "Yahoo Finance (DX-Y.NYB)" },
+  hyg:  { sym: "HYG",      label: "HY 채권 ETF (HYG)",     unit: "$",  src: "Yahoo Finance (HYG)" },
+  tlt:  { sym: "TLT",      label: "장기국채 ETF (TLT)",     unit: "$",  src: "Yahoo Finance (TLT)" },
+  tip:  { sym: "TIP",      label: "TIPS ETF (실질금리)",    unit: "$",  src: "Yahoo Finance (TIP)" },
+  gold: { sym: "GC=F",     label: "금 선물",                unit: "$",  src: "Yahoo Finance (GC=F)" },
+  sp:   { sym: "^GSPC",    label: "S&P 500",               unit: "",   src: "Yahoo Finance (^GSPC)" },
+};
+
+let _macroCache = { data: null, ts: 0 };
+
+async function _fetchMacroQuote(sym) {
+  const u = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d&includePrePost=false`;
+  for (const p of [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    `https://corsproxy.io/?${encodeURIComponent(u)}`
+  ]) {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 10000);
+      const r = await fetch(p, { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (!r.ok) continue;
+      const j = await r.json();
+      const res = j?.chart?.result?.[0];
+      if (!res) continue;
+      const m = res.meta;
+      const price = m?.regularMarketPrice;
+      const prev = m?.chartPreviousClose || m?.previousClose;
+      const chg = (price && prev) ? ((price - prev) / prev * 100) : null;
+      return { price, prev, chg };
+    } catch {}
+  }
+  return null;
+}
+
+async function fetchMacroIndicators() {
+  // 5분 캐시
+  if (_macroCache.data && Date.now() - _macroCache.ts < 300000) return _macroCache.data;
+  const keys = Object.keys(MACRO_SYMBOLS);
+  const results = {};
+  const fetches = keys.map(async k => {
+    results[k] = await _fetchMacroQuote(MACRO_SYMBOLS[k].sym);
+  });
+  await Promise.allSettled(fetches);
+  _macroCache = { data: results, ts: Date.now() };
+  return results;
+}
+
+function _macroValSpan(id) {
+  return `<span id="macro_${id}" style="font-size:10px;color:var(--mute)">로딩중...</span>`;
+}
 
 function _macroRiskHTML() {
   const tblStyle = `style="width:100%;border-collapse:collapse;font-size:11px"`;
   const thStyle = `style="text-align:left;padding:7px 10px;border-bottom:2px solid var(--bdr);color:var(--mute);font-weight:700;font-size:10px;letter-spacing:0.5px"`;
   const tdStyle = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);color:var(--txt)"`;
+  const tdVal = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);text-align:right;font-family:monospace"`;
   const tdDanger = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);color:var(--red);font-size:10px"`;
+  const tdSrc = `style="padding:7px 10px;border-bottom:1px solid var(--bdr);color:var(--mute);font-size:9px"`;
   const secHead = (icon, title, color) =>
     `<div style="display:flex;align-items:center;gap:8px;margin:18px 0 10px;padding-bottom:7px;border-bottom:1px solid rgba(31,58,98,0.4)">
       <span style="font-size:14px">${icon}</span>
       <span style="font-size:12px;font-weight:800;color:${color};letter-spacing:0.5px">${title}</span>
       <div style="flex:1;height:1px;background:linear-gradient(90deg,${color}30,transparent)"></div>
     </div>`;
+  const hdr = `<thead><tr><th ${thStyle}>지표</th><th ${thStyle} style="text-align:left;padding:7px 10px;border-bottom:2px solid var(--bdr);color:var(--mute);font-weight:700;font-size:10px;letter-spacing:0.5px;text-align:right">현재값</th><th ${thStyle}>위험 신호</th><th ${thStyle}>출처</th></tr></thead>`;
 
   return `
     <div class="card" style="margin-top:4px">
-      <div class="lbl" style="margin-bottom:6px">🌐 매크로 리스크 지표 (Macro Risk Indicators)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div class="lbl">🌐 매크로 리스크 지표 (Macro Risk Indicators)</div>
+        <div id="macroStatus" style="display:flex;align-items:center;gap:6px">
+          <span class="rs-dot-load"></span>
+          <span style="font-size:9px;color:var(--mute)">데이터 로딩중...</span>
+        </div>
+      </div>
 
       ${secHead("💵", "금리 & 유동성", "var(--blue)")}
       <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        ${hdr}
         <tbody>
-          <tr><td ${tdStyle}>미국채 장단기 금리차 (10Y-2Y)</td><td ${tdDanger}>역전 지속 → 경기침체 선행</td></tr>
-          <tr><td ${tdStyle}>연준 기준금리 / FOMC</td><td ${tdDanger}>예상 외 급격한 인상</td></tr>
-          <tr><td ${tdStyle}>실질금리 (TIPS)</td><td ${tdDanger}>실질금리 급등 → 성장주 밸류에이션 압박</td></tr>
-          <tr><td ${tdStyle}>M2 통화량</td><td ${tdDanger}>M2 감소 → 유동성 축소</td></tr>
+          <tr><td ${tdStyle}>미국채 10Y 금리</td><td ${tdVal}>${_macroValSpan("tnx")}</td><td ${tdDanger}>급등 시 → 성장주 밸류에이션 압박</td><td ${tdSrc}>Yahoo Finance (^TNX)</td></tr>
+          <tr><td ${tdStyle}>미국채 13주 T-Bill</td><td ${tdVal}>${_macroValSpan("irx")}</td><td ${tdDanger}>단기금리 급등 → 유동성 경색</td><td ${tdSrc}>Yahoo Finance (^IRX)</td></tr>
+          <tr><td ${tdStyle}>장단기 금리차 (10Y-13W)</td><td ${tdVal}>${_macroValSpan("spread")}</td><td ${tdDanger}>역전 지속 → 경기침체 선행</td><td ${tdSrc}>^TNX - ^IRX 계산</td></tr>
+          <tr><td ${tdStyle}>TIPS ETF (실질금리 프록시)</td><td ${tdVal}>${_macroValSpan("tip")}</td><td ${tdDanger}>TIP 하락 → 실질금리 급등</td><td ${tdSrc}>Yahoo Finance (TIP)</td></tr>
         </tbody>
       </table>
 
       ${secHead("🏭", "경기 & 기업 펀더멘털", "var(--green)")}
       <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        ${hdr}
         <tbody>
-          <tr><td ${tdStyle}>PMI (구매관리자지수)</td><td ${tdDanger}>PMI &lt; 50 (제조업 위축)</td></tr>
-          <tr><td ${tdStyle}>EPS 성장률</td><td ${tdDanger}>어닝 하향 조정 사이클 진입</td></tr>
-          <tr><td ${tdStyle}>PER / Shiller CAPE</td><td ${tdDanger}>CAPE &gt; 30 → 역사적 고평가 구간</td></tr>
-          <tr><td ${tdStyle}>기업 이익률 (Profit Margin)</td><td ${tdDanger}>마진 압박 → 실적 둔화 우려</td></tr>
+          <tr><td ${tdStyle}>S&P 500</td><td ${tdVal}>${_macroValSpan("sp")}</td><td ${tdDanger}>급락 시 → 시장 전반 리스크 확대</td><td ${tdSrc}>Yahoo Finance (^GSPC)</td></tr>
+          <tr><td ${tdStyle}>금 선물 (안전자산)</td><td ${tdVal}>${_macroValSpan("gold")}</td><td ${tdDanger}>금 급등 → 위험회피 심리 확산</td><td ${tdSrc}>Yahoo Finance (GC=F)</td></tr>
+          <tr><td ${tdStyle}>장기국채 ETF (TLT)</td><td ${tdVal}>${_macroValSpan("tlt")}</td><td ${tdDanger}>TLT 급락 → 금리 급등·채권 매도</td><td ${tdSrc}>Yahoo Finance (TLT)</td></tr>
+          <tr><td ${tdStyle}>PMI / EPS / CAPE</td><td ${tdVal}><span style="font-size:10px;color:var(--mute)">—</span></td><td ${tdDanger}>PMI&lt;50, CAPE&gt;30 → 고평가·위축</td><td ${tdSrc}>FRED / BLS (API 키 필요)</td></tr>
         </tbody>
       </table>
 
       ${secHead("🔗", "신용 & 위험 프리미엄", "var(--amber)")}
       <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        ${hdr}
         <tbody>
-          <tr><td ${tdStyle}>하이일드 스프레드 (HY Spread)</td><td ${tdDanger}>스프레드 급확대 → 신용위험 증가</td></tr>
-          <tr><td ${tdStyle}>CDS 스프레드</td><td ${tdDanger}>특정 국가/기업 부도 위험 상승</td></tr>
-          <tr><td ${tdStyle}>TED 스프레드</td><td ${tdDanger}>은행 간 신용 경색</td></tr>
-          <tr><td ${tdStyle}>달러 인덱스 (DXY)</td><td ${tdDanger}>달러 급등 → 신흥국/원자재 압박</td></tr>
+          <tr><td ${tdStyle}>HY 채권 ETF (HYG)</td><td ${tdVal}>${_macroValSpan("hyg")}</td><td ${tdDanger}>HYG 급락 → 하이일드 스프레드 확대</td><td ${tdSrc}>Yahoo Finance (HYG)</td></tr>
+          <tr><td ${tdStyle}>달러 인덱스 (DXY)</td><td ${tdVal}>${_macroValSpan("dxy")}</td><td ${tdDanger}>달러 급등 → 신흥국/원자재 압박</td><td ${tdSrc}>Yahoo Finance (DX-Y.NYB)</td></tr>
+          <tr><td ${tdStyle}>미국채 30Y 금리</td><td ${tdVal}>${_macroValSpan("tyx")}</td><td ${tdDanger}>장기금리 급등 → 장기자산 리스크</td><td ${tdSrc}>Yahoo Finance (^TYX)</td></tr>
+          <tr><td ${tdStyle}>CDS / TED 스프레드</td><td ${tdVal}><span style="font-size:10px;color:var(--mute)">—</span></td><td ${tdDanger}>스프레드 급확대 → 신용 경색</td><td ${tdSrc}>Bloomberg / FRED</td></tr>
         </tbody>
       </table>
 
       ${secHead("🧠", "심리 & 포지셔닝", "var(--purple)")}
       <table ${tblStyle}>
-        <thead><tr><th ${thStyle}>지표</th><th ${thStyle}>위험 신호</th></tr></thead>
+        ${hdr}
         <tbody>
-          <tr><td ${tdStyle}>AAII 투자심리</td><td ${tdDanger}>강세론자 극단적 과잉</td></tr>
-          <tr><td ${tdStyle}>Put/Call Ratio</td><td ${tdDanger}>비율 급격 하락 (과도한 낙관)</td></tr>
-          <tr><td ${tdStyle}>CNN Fear & Greed Index</td><td ${tdDanger}>Extreme Greed 구간</td></tr>
-          <tr><td ${tdStyle}>COT 리포트</td><td ${tdDanger}>기관 포지션 대량 청산</td></tr>
+          <tr><td ${tdStyle}>VIX (공포지수)</td><td ${tdVal}>${_macroValSpan("vix")}</td><td ${tdDanger}>VIX &gt; 30 → 극단적 공포</td><td ${tdSrc}>Yahoo Finance (^VIX)</td></tr>
+          <tr><td ${tdStyle}>AAII 투자심리</td><td ${tdVal}><span style="font-size:10px;color:var(--mute)">—</span></td><td ${tdDanger}>강세론자 극단적 과잉</td><td ${tdSrc}>AAII 주간 설문</td></tr>
+          <tr><td ${tdStyle}>Put/Call Ratio</td><td ${tdVal}><span style="font-size:10px;color:var(--mute)">—</span></td><td ${tdDanger}>비율 급격 하락 (과도한 낙관)</td><td ${tdSrc}>CBOE</td></tr>
+          <tr><td ${tdStyle}>CNN Fear & Greed</td><td ${tdVal}><span style="font-size:10px;color:var(--mute)">—</span></td><td ${tdDanger}>Extreme Greed 구간</td><td ${tdSrc}>CNN Business</td></tr>
         </tbody>
       </table>
+
+      <div style="margin-top:12px;padding:8px 12px;background:rgba(31,58,98,0.15);border-radius:8px;font-size:9px;color:var(--mute);line-height:1.6">
+        <b>데이터 출처 안내</b><br>
+        • 실시간 수치: Yahoo Finance API (CORS proxy 경유, 최대 15분 지연)<br>
+        • "—" 표시 지표: 별도 API 키 필요 (FRED, Bloomberg, CBOE, AAII, CNN 등)<br>
+        • 장단기 금리차: ^TNX(10Y) - ^IRX(13주) 로 자체 계산
+      </div>
     </div>`;
+}
+
+function _updateMacroDOM(data) {
+  const fmt = (v, unit) => {
+    if (v == null) return `<span style="color:var(--mute)">N/A</span>`;
+    const n = Number(v);
+    const str = unit === "%" ? n.toFixed(2) + "%" : unit === "$" ? "$" + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    return str;
+  };
+  const colorVal = (chg) => {
+    if (chg == null) return "var(--txt)";
+    return chg >= 0 ? "var(--green)" : "var(--red)";
+  };
+  const makeHTML = (v, chg, unit) => {
+    const color = colorVal(chg);
+    const arrow = chg != null ? (chg >= 0 ? "▲" : "▼") : "";
+    const chgStr = chg != null ? ` <span style="font-size:9px">${arrow}${Math.abs(chg).toFixed(2)}%</span>` : "";
+    return `<span style="font-size:11px;font-weight:700;color:${color}">${fmt(v, unit)}${chgStr}</span>`;
+  };
+
+  // 개별 지표 업데이트
+  for (const [k, info] of Object.entries(MACRO_SYMBOLS)) {
+    const el = document.getElementById("macro_" + k);
+    if (!el) continue;
+    const d = data[k];
+    if (d?.price != null) {
+      el.innerHTML = makeHTML(d.price, d.chg, info.unit);
+    } else {
+      el.innerHTML = `<span style="color:var(--mute)">N/A</span>`;
+    }
+  }
+
+  // 장단기 금리차 계산 (10Y - 13W)
+  const spreadEl = document.getElementById("macro_spread");
+  if (spreadEl && data.tnx?.price != null && data.irx?.price != null) {
+    const spread = data.tnx.price - data.irx.price;
+    const color = spread < 0 ? "var(--red)" : "var(--green)";
+    const label = spread < 0 ? "역전" : "정상";
+    spreadEl.innerHTML = `<span style="font-size:11px;font-weight:700;color:${color}">${spread >= 0 ? "+" : ""}${spread.toFixed(2)}%p <span style="font-size:9px">(${label})</span></span>`;
+  } else if (spreadEl) {
+    spreadEl.innerHTML = `<span style="color:var(--mute)">N/A</span>`;
+  }
+
+  // 상태 표시 업데이트
+  document.querySelectorAll("#macroStatus").forEach(el => {
+    const now = new Date();
+    const ts = `${now.getHours()}:${String(now.getMinutes()).padStart(2,"0")}`;
+    el.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block"></span><span style="font-size:9px;color:var(--mute)">${ts} 업데이트</span>`;
+  });
+}
+
+async function loadMacroData() {
+  try {
+    const data = await fetchMacroIndicators();
+    _updateMacroDOM(data);
+  } catch { /* silent */ }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -752,6 +882,7 @@ function renderUSRisk(el) {
     ${_macroRiskHTML()}
   </div>`;
   setTimeout(() => rsUpdateMonitor("us"), 0);
+  setTimeout(() => loadMacroData(), 100);
 }
 
 function renderKRRisk(el) {
@@ -800,6 +931,7 @@ function renderKRRisk(el) {
     ${_macroRiskHTML()}
   </div>`;
   setTimeout(() => rsUpdateMonitor("kr"), 0);
+  setTimeout(() => loadMacroData(), 100);
 }
 
 
