@@ -777,11 +777,41 @@ function rsShowDetail(ticker, isKR) {
   const obvColor = ind.obv ? (ind.obv.trend === "up" ? "#2ee0a8" : "#ef4444") : "var(--txt2)";
   const crossColor = ind.cross ? (ind.cross.type === "dead" || ind.cross.type === "bearish" ? "#ef4444" : "#2ee0a8") : "var(--txt2)";
 
-  const riskRows = (d?.risks || []).map(r => `
-    <div class="rs-risk-row" style="border-left:3px solid ${sevBorderL[r.sev] || "#334155"}">
+  const riskDesc = {
+    DROP: "하루 만에 3% 이상 급락한 상태로, 악재·공매도·패닉셀 가능성이 있습니다. 추가 하락 여부를 확인하세요.",
+    MA_T: "주가가 이동평균선에 근접한 상태입니다. 지지 또는 저항으로 작용할 수 있어 방향 전환 가능성이 있습니다.",
+    MA_B: "주가가 이동평균선 아래로 이탈했습니다. 추세 약화 신호로, 하락 지속 가능성에 유의하세요.",
+    RSI_OB: "RSI가 70 이상으로 과매수 구간입니다. 단기 과열로 조정이 올 수 있습니다.",
+    RSI_OS: "RSI가 30 이하로 과매도 구간입니다. 반등 가능성이 있으나 추세적 하락일 수도 있습니다.",
+    BB_U: "볼린저밴드 상단을 돌파했습니다. 강한 상승세이나 되돌림 가능성도 있습니다.",
+    BB_D: "볼린저밴드 하단을 이탈했습니다. 과매도 상태로 반등 또는 추가 하락에 주의하세요.",
+    MACD_BEAR: "MACD가 시그널선을 하향 돌파하여 매도 신호가 발생했습니다. 하락 추세 전환 가능성이 있습니다.",
+    MACD_WEAK: "MACD 히스토그램이 급격히 줄어들고 있습니다. 상승 모멘텀이 약화되고 있다는 경고입니다.",
+    STOCH_OB: "스토캐스틱이 80 이상 과매수 구간입니다. 단기 고점 부근일 수 있습니다.",
+    STOCH_OS: "스토캐스틱이 20 이하 과매도 구간입니다. 바닥 부근일 수 있으나 확인이 필요합니다.",
+    STOCH_CROSS: "%K가 %D를 하향 돌파하여 단기 매도 신호가 발생했습니다.",
+    OBV_DIV: "가격은 오르는데 거래량 흐름(OBV)은 하락 중입니다. 상승이 허약할 수 있다는 경고입니다.",
+    VOL_SPIKE: "하락과 함께 평소 대비 2배 이상 거래량이 폭증했습니다. 투매 또는 큰 매도세가 유입된 신호입니다.",
+    VIX_HIGH: "공포지수(VIX)가 30을 초과하여 시장 전체가 극도의 불안 상태입니다.",
+    VIX_WARN: "공포지수(VIX)가 25를 초과하여 시장 경계 구간입니다.",
+    DEAD_X: "50일 이동평균이 200일 이동평균을 하향 돌파한 강력한 하락 추세 신호입니다.",
+    BEAR_ZONE: "50일선이 200일선 아래에 위치한 약세 구간으로, 하락 추세가 지속 중입니다.",
+    DOUBLE_TOP: "비슷한 고점이 두 번 형성된 패턴으로, 저항 돌파 실패 시 하락 전환 가능성이 높습니다.",
+    HEAD_SHOULDERS: "세 개의 봉우리 중 가운데가 가장 높은 강력한 하락 반전 패턴입니다.",
+    GAP_DOWN: "전일 대비 큰 폭의 갭 하락이 발생했습니다. 악재 반영 또는 수급 붕괴 신호일 수 있습니다."
+  };
+
+  const riskRows = (d?.risks || []).map(r => {
+    const desc = riskDesc[r.type] || "";
+    const tipId = `rstip_${Math.random().toString(36).slice(2,8)}`;
+    return `
+    <div class="rs-risk-row" style="border-left:3px solid ${sevBorderL[r.sev] || "#334155"};position:relative">
       <span style="font-size:8px;font-weight:800;color:${sevColor[r.sev]};min-width:54px">${sevLabel[r.sev]}</span>
-      <span style="font-size:12px;color:var(--txt2)">${r.msg}</span>
-    </div>`).join("");
+      <span style="font-size:12px;color:var(--txt2);flex:1">${r.msg}</span>
+      ${desc ? `<span class="rs-tip-btn" onclick="var t=document.getElementById('${tipId}');t.style.display=t.style.display==='none'?'block':'none'" title="설명 보기">?</span>
+      <div id="${tipId}" class="rs-tip-bubble" style="display:none">${desc}</div>` : ""}
+    </div>`;
+  }).join("");
 
   const portCells = [
     { l: "보유수량", v: portItem.qty ? (isKR ? portItem.qty + "주" : portItem.qty % 1 ? portItem.qty.toFixed(2) + "주" : portItem.qty + "주") : "—", c: "var(--txt)" },

@@ -237,7 +237,11 @@ tr:hover td { background: rgba(24, 47, 82, 0.5); }
 .rs-ind-label { font-size: 8px; color: var(--mute); font-weight: 700; letter-spacing: .3px; margin-bottom: 3px; }
 .rs-ind-val { font-size: 12px; font-weight: 800; font-family: monospace; }
 
-.rs-risk-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 7px; margin-bottom: 4px; background: var(--s1); }
+.rs-risk-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 7px; margin-bottom: 4px; background: var(--s1); position: relative; flex-wrap: wrap; }
+.rs-tip-btn { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); color: var(--mute); font-size: 10px; font-weight: 800; cursor: pointer; flex-shrink: 0; transition: background .15s, color .15s; line-height: 1; }
+.rs-tip-btn:hover { background: rgba(255,255,255,.18); color: var(--txt); }
+.rs-tip-bubble { width: 100%; margin-top: 4px; padding: 8px 12px; background: #1a2236; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; font-size: 11px; line-height: 1.55; color: var(--sub); position: relative; }
+.rs-tip-bubble::before { content: ""; position: absolute; top: -6px; right: 14px; width: 10px; height: 10px; background: #1a2236; border-left: 1px solid rgba(255,255,255,.1); border-top: 1px solid rgba(255,255,255,.1); transform: rotate(45deg); }
 .rs-port-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .rs-port-cell { padding: 9px 12px; background: var(--s1); border-radius: 8px; border: 1px solid var(--bdr); }
 
