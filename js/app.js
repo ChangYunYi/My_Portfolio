@@ -31,6 +31,40 @@ function jsonp(sheet) {
   });
 }
 
+/** 캐시된 JSON(data/sheets.json)에서 데이터 로드 — 첫 로딩용 */
+async function loadFromCache() {
+  const badge = document.getElementById("statusBadge");
+  const info = document.getElementById("loadInfo");
+  badge.className = "bdg bdg-ld";
+  badge.textContent = "LOADING";
+
+  try {
+    const res = await fetch(`./data/sheets.json?t=${Date.now()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const sheets = data.sheets || {};
+    let ok = 0;
+    for (const n of SHEETS) {
+      if (sheets[n]) { RAW[n] = sheets[n]; ok++; }
+    }
+    info.textContent = `${ok}/${SHEETS.length}`;
+
+    if (ok >= 3) {
+      const updated = data.updated ? new Date(data.updated) : null;
+      const age = updated ? Math.round((Date.now() - updated.getTime()) / 60000) : "?";
+      badge.className = "bdg bdg-ok";
+      badge.textContent = `CACHE · ${age}m ago`;
+      parseAll();
+      console.log(`[Cache] ${ok}/${SHEETS.length} sheets loaded (${age}m old)`);
+      return true;
+    }
+  } catch (e) {
+    console.warn("[Cache] Failed:", e.message);
+  }
+  return false;
+}
+
+/** Google Sheets에서 실시간 JSONP 로딩 */
 async function loadAllSheets() {
   const badge = document.getElementById("statusBadge");
   const info = document.getElementById("loadInfo");
@@ -1350,8 +1384,14 @@ window.addEventListener("resize", () => {
   }, 300);
 });
 
-window.addEventListener("DOMContentLoaded", () => {
-  loadAllSheets();
+window.addEventListener("DOMContentLoaded", async () => {
+  // 1) 캐시된 JSON으로 빠른 첫 로딩
+  const cached = await loadFromCache();
+  if (!cached) {
+    // 캐시 실패 시 구글시트에서 직접 로딩
+    await loadAllSheets();
+  }
+  // 2) 이후 10분 간격으로 구글시트에서 실시간 데이터 갱신
   startAutoRefresh();
 });
 

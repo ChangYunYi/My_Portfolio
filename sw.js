@@ -1,4 +1,4 @@
-const CACHE_NAME = 'portfolio-v7';
+const CACHE_NAME = 'portfolio-v8';
 const ASSETS = [
   './index.html',
   './stock.html',
@@ -8,7 +8,8 @@ const ASSETS = [
   './js/treemap.js',
   './js/app.js',
   './js/risk-sentinel.js',
-  './js/stock-detail.js'
+  './js/stock-detail.js',
+  './data/sheets.json'
 ];
 
 // 설치: 앱 셸 캐시
