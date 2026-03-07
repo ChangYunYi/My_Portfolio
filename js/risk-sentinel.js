@@ -801,14 +801,14 @@ function rsShowDetail(ticker, isKR) {
     GAP_DOWN: "전일 대비 큰 폭의 갭 하락이 발생했습니다. 악재 반영 또는 수급 붕괴 신호일 수 있습니다."
   };
 
-  const riskRows = (d?.risks || []).map(r => {
+  const riskRows = (d?.risks || []).map((r, idx) => {
     const desc = riskDesc[r.type] || "";
-    const tipId = `rstip_${Math.random().toString(36).slice(2,8)}`;
+    const tipId = `rstip_${idx}`;
     return `
-    <div class="rs-risk-row" style="border-left:3px solid ${sevBorderL[r.sev] || "#334155"};position:relative">
+    <div class="rs-risk-row" style="border-left:3px solid ${sevBorderL[r.sev] || "#334155"}">
       <span style="font-size:8px;font-weight:800;color:${sevColor[r.sev]};min-width:54px">${sevLabel[r.sev]}</span>
       <span style="font-size:12px;color:var(--txt2);flex:1">${r.msg}</span>
-      ${desc ? `<span class="rs-tip-btn" onclick="var t=document.getElementById('${tipId}');t.style.display=t.style.display==='none'?'block':'none'" title="설명 보기">?</span>
+      ${desc ? `<span class="rs-tip-btn" data-tip="${tipId}">?</span>
       <div id="${tipId}" class="rs-tip-bubble" style="display:none">${desc}</div>` : ""}
     </div>`;
   }).join("");
@@ -906,4 +906,13 @@ function rsShowDetail(ticker, isKR) {
   </div>`;
 
   document.body.appendChild(overlay);
+
+  // 말풍선 토글 이벤트 바인딩
+  overlay.querySelectorAll(".rs-tip-btn").forEach(btn => {
+    btn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      const tipEl = document.getElementById(this.getAttribute("data-tip"));
+      if (tipEl) tipEl.style.display = tipEl.style.display === "none" ? "block" : "none";
+    });
+  });
 }
