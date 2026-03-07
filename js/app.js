@@ -272,11 +272,11 @@ document.addEventListener("click", e => {
   const tr = e.target.closest("tr[data-ticker]");
   if (tr) {
     if (tr.dataset.market === "kr") {
-      // 국내 종목: RS 리스크 상세 팝업
       rsShowDetail(tr.dataset.ticker, true);
       return;
     }
-    openStock(tr.dataset.ticker, tr.dataset.market, tr.dataset.name, tr.dataset.type);
+    // 미국 종목: RS 리스크 상세 팝업
+    rsShowDetail(tr.dataset.ticker, false);
   }
 });
 
@@ -550,7 +550,8 @@ function renderIndex(el) {
       <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--blue),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.idxT.val))}</div>
-          <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
+          <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div>
+          <div id="usRiskStatus_index" style="font-size:9px;color:var(--mute);margin-top:3px"></div></div>
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">목표 진행률 (투자금)</div>
           <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:var(--txt2)">${fU(Math.round(P.idxT.inv))}</span><span style="font-weight:800;color:${pct >= 100 ? "var(--green)" : "var(--txt2)"}">${pct.toFixed(0)}%</span></div>
           <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct, 100)}%;background:${pct >= 100 ? "var(--green)" : "var(--blue)"}"></div></div>
@@ -575,7 +576,8 @@ function renderDividend(el) {
       <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--green),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.divT.val))}</div>
-          <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
+          <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div>
+          <div id="usRiskStatus_dividend" style="font-size:9px;color:var(--mute);margin-top:3px"></div></div>
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">목표 진행률 (투자금)</div>
           <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:var(--txt2)">${fU(Math.round(P.divT.inv))}</span><span style="font-weight:800;color:${pct >= 100 ? "var(--green)" : "var(--txt2)"}">${pct.toFixed(0)}%</span></div>
           <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct, 100)}%;background:${pct >= 100 ? "var(--green)" : "var(--green)"}"></div></div>
@@ -600,7 +602,8 @@ function renderGrowth(el) {
       <div class="side-cards" style="display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0">
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="topline" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
           <div class="lbl">평가금액</div><div class="big">${fU(Math.round(P.groT.val))}</div>
-          <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div></div>
+          <div class="mid" style="color:${pc(plp)};margin-top:4px">${fP(plp)}</div>
+          <div id="usRiskStatus_growth" style="font-size:9px;color:var(--mute);margin-top:3px"></div></div>
         <div class="card" style="flex:1;overflow:hidden;min-height:0"><div class="lbl">목표 진행률 (투자금)</div>
           <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:var(--txt2)">${fU(Math.round(P.groT.inv))}</span><span style="font-weight:800;color:${pct >= 100 ? "var(--green)" : "var(--txt2)"}">${pct.toFixed(0)}%</span></div>
           <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pct, 100)}%;background:${pct >= 100 ? "var(--green)" : "var(--purple)"}"></div></div>
@@ -810,6 +813,18 @@ function _updateUSTableRS() {
       }
     }
   });
+
+  // US 리스크 상태 표시
+  const statusEl = document.getElementById("usRiskStatus_" + activeTab);
+  if (statusEl) {
+    const st = RS_US.status;
+    if (st.loading) {
+      statusEl.innerHTML = `<span style="color:var(--amber)">리스크 분석중 ${st.loaded}/${st.total}...</span>`;
+    } else if (st.lastUp) {
+      const hasRisk = items.some(h => RS_US.data[h.ticker]?.risks?.length > 0);
+      statusEl.innerHTML = `<span style="color:${hasRisk ? "var(--red)" : "var(--green)"}">${hasRisk ? "⚠ 리스크 감지" : "✓ 정상"}</span> · ${st.lastUp.toLocaleTimeString("ko-KR")}`;
+    }
+  }
 }
 
 /** US 탭 RS 데이터 자동 반영 타이머 */
