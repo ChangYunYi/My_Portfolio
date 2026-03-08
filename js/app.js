@@ -953,7 +953,7 @@ async function _fetchYahooQuote(sym) {
       const tid = setTimeout(() => ctrl.abort(), 10000);
       const r = await fetch(p, { signal: ctrl.signal });
       clearTimeout(tid);
-      if (!r.ok) continue;
+      if (!r.ok) { r.body?.cancel().catch(() => {}); continue; }
       const j = await r.json();
       const res = j?.chart?.result?.[0];
       if (!res) continue;
@@ -1395,36 +1395,30 @@ window.addEventListener("DOMContentLoaded", async () => {
   startAutoRefresh();
 });
 
-// 서비스 워커 등록 + 이전 SW 강제 교체 + 누적 캐시 정리
-if ('serviceWorker' in navigator) {
-  // 1) 이전 버전 캐시 강제 정리 (SW 활성화 대기 없이 즉시)
-  if ('caches' in window) {
-    caches.keys().then(keys => {
-      keys.filter(k => k !== 'portfolio-v10').forEach(k => {
-        caches.delete(k).then(() => console.log(`[Cache] 삭제: ${k}`));
-      });
-    });
-    // v10 캐시 내 외부 API 응답도 정리
-    caches.open('portfolio-v10').then(cache => {
-      cache.keys().then(reqs => {
-        reqs.forEach(req => {
-          const u = req.url;
-          if (u.includes('yahoo.com') || u.includes('allorigins.win') ||
-              u.includes('corsproxy.io') || u.includes('finnhub.io') ||
-              u.includes('api.stlouisfed.org')) {
-            cache.delete(req).then(() => console.log(`[Cache] API응답 삭제: ${u.slice(0, 80)}`));
-          }
-        });
-      });
-    });
+// ── Chrome 크래시 방지: SW 완전 초기화 + 캐시 전량 삭제 ──
+(async function _initSW() {
+  // 1) 기존 SW 전부 해제 (이전 버전이 캐시를 무한 축적하던 문제)
+  if ('serviceWorker' in navigator) {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.unregister();
+        console.log('[SW] 해제:', reg.scope);
+      }
+    } catch (e) { console.warn('[SW] 해제 실패:', e); }
   }
-  // 2) SW 등록 + 즉시 활성화 유도
-  navigator.serviceWorker.register('./sw.js').then(reg => {
-    reg.addEventListener('updatefound', () => {
-      const nw = reg.installing;
-      if (nw) nw.addEventListener('statechange', () => {
-        if (nw.state === 'activated') console.log('[SW] v10 활성화 완료');
-      });
-    });
-  }).catch(() => {});
-}
+  // 2) Cache Storage 전량 삭제 (이전 SW가 쌓아둔 외부 API 응답 포함)
+  if ('caches' in window) {
+    try {
+      const keys = await caches.keys();
+      for (const k of keys) {
+        await caches.delete(k);
+        console.log('[Cache] 삭제:', k);
+      }
+    } catch (e) { console.warn('[Cache] 삭제 실패:', e); }
+  }
+  // 3) 새 SW 등록
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+})();
