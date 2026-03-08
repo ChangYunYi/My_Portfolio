@@ -1,4 +1,4 @@
-const CACHE_NAME = 'portfolio-v9';
+const CACHE_NAME = 'portfolio-v10';
 const ASSETS = [
   './index.html',
   './stock.html',
@@ -30,21 +30,30 @@ self.addEventListener('activate', e => {
   );
 });
 
-// 네트워크 우선, 실패 시 캐시 (데이터는 항상 최신 유지)
+// 네트워크 우선, 실패 시 캐시 (앱 셸만 캐시, 외부 API 제외)
 self.addEventListener('fetch', e => {
-  // Google Sheets API 요청은 캐시하지 않음
-  if (e.request.url.includes('docs.google.com')) return;
+  const url = e.request.url;
+
+  // 외부 API 요청은 SW가 개입하지 않음 (Yahoo, CORS프록시, Finnhub, FRED 등)
+  if (url.includes('docs.google.com') ||
+      url.includes('yahoo.com') ||
+      url.includes('allorigins.win') ||
+      url.includes('corsproxy.io') ||
+      url.includes('finnhub.io') ||
+      url.includes('api.stlouisfed.org')) return;
+
+  // 같은 오리진(앱 셸)만 캐시
+  if (!url.startsWith(self.location.origin)) return;
 
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        // 성공하면 캐시 업데이트
         if (res.ok && e.request.method === 'GET') {
           const clone = res.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
         return res;
       })
-      .catch(() => caches.match(e.request)) // 오프라인이면 캐시 반환
+      .catch(() => caches.match(e.request))
   );
 });
