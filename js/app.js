@@ -1395,7 +1395,36 @@ window.addEventListener("DOMContentLoaded", async () => {
   startAutoRefresh();
 });
 
-// 서비스 워커 등록
+// 서비스 워커 등록 + 이전 SW 강제 교체 + 누적 캐시 정리
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  // 1) 이전 버전 캐시 강제 정리 (SW 활성화 대기 없이 즉시)
+  if ('caches' in window) {
+    caches.keys().then(keys => {
+      keys.filter(k => k !== 'portfolio-v10').forEach(k => {
+        caches.delete(k).then(() => console.log(`[Cache] 삭제: ${k}`));
+      });
+    });
+    // v10 캐시 내 외부 API 응답도 정리
+    caches.open('portfolio-v10').then(cache => {
+      cache.keys().then(reqs => {
+        reqs.forEach(req => {
+          const u = req.url;
+          if (u.includes('yahoo.com') || u.includes('allorigins.win') ||
+              u.includes('corsproxy.io') || u.includes('finnhub.io') ||
+              u.includes('api.stlouisfed.org')) {
+            cache.delete(req).then(() => console.log(`[Cache] API응답 삭제: ${u.slice(0, 80)}`));
+          }
+        });
+      });
+    });
+  }
+  // 2) SW 등록 + 즉시 활성화 유도
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      if (nw) nw.addEventListener('statechange', () => {
+        if (nw.state === 'activated') console.log('[SW] v10 활성화 완료');
+      });
+    });
+  }).catch(() => {});
 }

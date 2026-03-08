@@ -53,6 +53,18 @@ async function rsDbPut(store, k, v) {
   } catch (e) { console.warn("rsDbPut", e); }
 }
 
+async function rsDbDel(store, k) {
+  try {
+    const db = await rsOpenDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(store, "readwrite");
+      tx.objectStore(store).delete(k);
+      tx.oncomplete = () => res();
+      tx.onerror = e => rej(e);
+    });
+  } catch (e) { console.warn("rsDbDel", e); }
+}
+
 async function rsDbGetAll(store) {
   try {
     const db = await rsOpenDB();
@@ -587,10 +599,19 @@ async function startRSSentinel() {
   }
   _rsSentinelStarted = true;
 
-  // DB 캐시 복원
+  // DB 캐시 복원 (1시간 이내 데이터만, 오래된 항목은 삭제)
+  const _cacheMaxAge = 3600000; // 1시간
   const [cachedUS, cachedKR] = await Promise.all([rsDbGetAll("rsUS"), rsDbGetAll("rsKR")]);
-  cachedUS.forEach(r => { if (r.k && r.v?.loaded) RS_US.data[r.k] = r.v; });
-  cachedKR.forEach(r => { if (r.k && r.v?.loaded) RS_KR.data[r.k] = r.v; });
+  cachedUS.forEach(r => {
+    if (r.k && r.v?.loaded && r.ts && (Date.now() - r.ts < _cacheMaxAge)) {
+      RS_US.data[r.k] = r.v;
+    } else if (r.k) { rsDbDel("rsUS", r.k); }
+  });
+  cachedKR.forEach(r => {
+    if (r.k && r.v?.loaded && r.ts && (Date.now() - r.ts < _cacheMaxAge)) {
+      RS_KR.data[r.k] = r.v;
+    } else if (r.k) { rsDbDel("rsKR", r.k); }
+  });
   if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
 
   // VIX + 양쪽 동시 백그라운드 로딩
