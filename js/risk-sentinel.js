@@ -102,10 +102,9 @@ async function rsYahooFetch(sym, range, interval) {
   ]) {
     try {
       const r = await fetch(p, { signal: rsAbortSignal(12000) });
-      if (r.ok) {
-        const j = await r.json();
-        if (j?.chart?.result?.[0]) return j;
-      }
+      if (!r.ok) { r.body?.cancel().catch(() => {}); continue; } // body 해제로 연결 정리
+      const j = await r.json();
+      if (j?.chart?.result?.[0]) return j;
     } catch {}
   }
   return null;
@@ -153,7 +152,7 @@ function rsParseQuote(j) {
 async function rsFhQuote(sym) {
   try {
     const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FHKEY}`, { signal: rsAbortSignal(8000) });
-    if (!r.ok) return null;
+    if (!r.ok) { r.body?.cancel().catch(() => {}); return null; }
     const d = await r.json();
     return (d.c > 0 || d.h > 0) ? { c: d.c, pc: d.pc, h: d.h, l: d.l } : null;
   } catch { return null; }
@@ -549,6 +548,17 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   }
 }
 
+/** US → KR 직렬 로딩 (동시 fetch 폭주 방지) */
+let _rsSeqRunning = false;
+async function _rsLoadSequential() {
+  if (_rsSeqRunning) return;
+  _rsSeqRunning = true;
+  try {
+    await rsLoadUS();
+    await rsLoadKR();
+  } finally { _rsSeqRunning = false; }
+}
+
 async function rsLoadUS() {
   if (RS_US.status.loading) return;
   RS_US.status.loading = true;
@@ -582,19 +592,21 @@ async function rsLoadKR() {
    엔진 시작
    ═══════════════════════════════════════════════════════ */
 
+let _rsRetryCount = 0;
 async function startRSSentinel() {
   if (!P || !P.index || !P.dividend || !P.growth || !P.kr) {
-    console.warn("[RS] P 미준비, 500ms 재시도");
+    if (++_rsRetryCount > 10) { console.error("[RS] P 로드 실패, 재시도 중단"); return; }
+    console.warn("[RS] P 미준비, 500ms 재시도 (" + _rsRetryCount + "/10)");
     setTimeout(startRSSentinel, 500);
     return;
   }
+  _rsRetryCount = 0;
 
   // 이미 시작된 경우 데이터만 재로드 (타이머 중복 방지)
   if (_rsSentinelStarted) {
     console.log("[RS] 이미 실행중, 데이터만 재로드");
     rsLoadVIX();
-    rsLoadUS();
-    rsLoadKR();
+    _rsLoadSequential();
     return;
   }
   _rsSentinelStarted = true;
@@ -614,40 +626,30 @@ async function startRSSentinel() {
   });
   if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
 
-  // VIX + 양쪽 동시 백그라운드 로딩
+  // VIX + 직렬 로딩 (US→KR 순차, 동시 fetch 폭주 방지)
   rsLoadVIX();
-  rsLoadUS();
-  rsLoadKR();
+  _rsLoadSequential();
 
   // VIX 10분마다 갱신
   _rsIntervals.push(setInterval(rsLoadVIX, 600000));
 
-  // 장중 3분 / 장외 30분 적응형 갱신 (단일 setTimeout 체이닝, 배열 미사용)
-  let _usRefreshId = null, _krRefreshId = null;
-  function _scheduleUSRefresh() {
-    if (_usRefreshId) clearTimeout(_usRefreshId);
+  // 장중 3분 / 장외 30분 적응형 갱신 (US+KR 직렬, 단일 스케줄러)
+  let _rsRefreshId = null;
+  function _scheduleRefresh() {
+    if (_rsRefreshId) clearTimeout(_rsRefreshId);
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
     const et = new Date(utc - 5 * 3600000);
-    const usOpen = et.getDay() >= 1 && et.getDay() <= 5 && (et.getHours() * 100 + et.getMinutes()) >= 930 && (et.getHours() * 100 + et.getMinutes()) <= 1600;
-    const delay = usOpen ? 180000 : 1800000; // 장중 3분, 장외 30분
-    _usRefreshId = setTimeout(() => {
-      rsLoadUS();
-      _scheduleUSRefresh();
-    }, delay);
-  }
-  function _scheduleKRRefresh() {
-    if (_krRefreshId) clearTimeout(_krRefreshId);
-    const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
     const kst = new Date(utc + 9 * 3600000);
+    const usOpen = et.getDay() >= 1 && et.getDay() <= 5 && (et.getHours() * 100 + et.getMinutes()) >= 930 && (et.getHours() * 100 + et.getMinutes()) <= 1600;
     const krOpen = kst.getDay() >= 1 && kst.getDay() <= 5 && (kst.getHours() * 100 + kst.getMinutes()) >= 900 && (kst.getHours() * 100 + kst.getMinutes()) <= 1530;
-    const delay = krOpen ? 180000 : 1800000; // 장중 3분, 장외 30분
-    _krRefreshId = setTimeout(() => {
-      rsLoadKR();
-      _scheduleKRRefresh();
+    const anyOpen = usOpen || krOpen;
+    const delay = anyOpen ? 180000 : 1800000; // 장중 3분, 장외 30분
+    _rsRefreshId = setTimeout(async () => {
+      await _rsLoadSequential();
+      _scheduleRefresh();
     }, delay);
   }
-  _scheduleUSRefresh();
-  _scheduleKRRefresh();
+  _scheduleRefresh();
 
   // 15초마다 상태바만 갱신 (탭별 테이블 갱신은 app.js에서 담당)
   _rsIntervals.push(setInterval(() => {
