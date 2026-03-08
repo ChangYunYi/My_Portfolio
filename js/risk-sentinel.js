@@ -15,6 +15,10 @@ const RSW = ms => new Promise(r => setTimeout(r, ms));
 const RS_US = { data: {}, status: { loading: false, loaded: 0, total: 0, lastUp: null } };
 const RS_KR = { data: {}, status: { loading: false, loaded: 0, total: 0, lastUp: null } };
 
+// ── Sentinel 타이머 관리 (중복 방지) ──
+let _rsSentinelStarted = false;
+const _rsIntervals = [];
+
 
 /* ═══════════════════════════════════════════════════════
    IndexedDB 캐시
@@ -573,6 +577,16 @@ async function startRSSentinel() {
     return;
   }
 
+  // 이미 시작된 경우 데이터만 재로드 (타이머 중복 방지)
+  if (_rsSentinelStarted) {
+    console.log("[RS] 이미 실행중, 데이터만 재로드");
+    rsLoadVIX();
+    rsLoadUS();
+    rsLoadKR();
+    return;
+  }
+  _rsSentinelStarted = true;
+
   // DB 캐시 복원
   const [cachedUS, cachedKR] = await Promise.all([rsDbGetAll("rsUS"), rsDbGetAll("rsKR")]);
   cachedUS.forEach(r => { if (r.k && r.v?.loaded) RS_US.data[r.k] = r.v; });
@@ -585,10 +599,10 @@ async function startRSSentinel() {
   rsLoadKR();
 
   // VIX 10분마다 갱신
-  setInterval(rsLoadVIX, 600000);
+  _rsIntervals.push(setInterval(rsLoadVIX, 600000));
 
   // 장중 3분 / 장외 30분 적응형 갱신
-  setInterval(() => {
+  _rsIntervals.push(setInterval(() => {
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
     // 미장: ET 기준 월~금 09:30~16:00
     const et = new Date(utc - 5 * 3600000);
@@ -597,8 +611,8 @@ async function startRSSentinel() {
       RS_US._lastLoad = Date.now();
       rsLoadUS();
     }
-  }, 180000);
-  setInterval(() => {
+  }, 180000));
+  _rsIntervals.push(setInterval(() => {
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
     // 한장: KST 기준 월~금 09:00~15:30
     const kst = new Date(utc + 9 * 3600000);
@@ -607,15 +621,15 @@ async function startRSSentinel() {
       RS_KR._lastLoad = Date.now();
       rsLoadKR();
     }
-  }, 182000);
+  }, 182000));
 
   // 8초마다 UI 점진적 갱신
-  setInterval(() => {
+  _rsIntervals.push(setInterval(() => {
     rsUpdateStatus("us");
     rsUpdateStatus("kr");
     if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
     if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
-  }, 8000);
+  }, 8000));
 }
 
 

@@ -934,7 +934,7 @@ let _macroCache = { data: null, ts: 0 };
 // ── data/macro.json에서 FRED 데이터 로드 (GitHub Actions가 10분마다 갱신) ──
 async function _fetchFREDFromJSON() {
   try {
-    const r = await fetch("data/macro.json?" + Date.now(), { signal: AbortSignal.timeout(10000) });
+    const r = await fetch("data/macro.json?" + Date.now(), { signal: rsAbortSignal(10000) });
     if (!r.ok) return {};
     const j = await r.json();
     return j?.series || {};
