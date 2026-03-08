@@ -18,7 +18,6 @@ const RS_KR = { data: {}, status: { loading: false, loaded: 0, total: 0, lastUp:
 // ── Sentinel 타이머 관리 (중복 방지) ──
 let _rsSentinelStarted = false;
 const _rsIntervals = [];
-const _rsTimeouts = [];
 
 
 /* ═══════════════════════════════════════════════════════
@@ -523,7 +522,7 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   store.data[portTicker] = {
     loading: false, loaded: true, loadedAt: Date.now(),
     price: pr, prevClose, changePct: prevClose > 0 ? ((pr - prevClose) / prevClose) * 100 : 0,
-    closes: hasC ? cl : null, ohlcv: ohlcv || null,
+    closes: hasC ? cl.slice(-252) : null,  // 차트용 최근 1년만 보존 (메모리 절약, ohlcv 미저장)
     intraday: (isKR && q.intraday?.length > 2) ? q.intraday : null,
     ind, risks: rsFindRisks(pr, prevClose, ind)
   };
@@ -602,37 +601,38 @@ async function startRSSentinel() {
   // VIX 10분마다 갱신
   _rsIntervals.push(setInterval(rsLoadVIX, 600000));
 
-  // 장중 3분 / 장외 30분 적응형 갱신 (setTimeout 체이닝)
+  // 장중 3분 / 장외 30분 적응형 갱신 (단일 setTimeout 체이닝, 배열 미사용)
+  let _usRefreshId = null, _krRefreshId = null;
   function _scheduleUSRefresh() {
+    if (_usRefreshId) clearTimeout(_usRefreshId);
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
     const et = new Date(utc - 5 * 3600000);
     const usOpen = et.getDay() >= 1 && et.getDay() <= 5 && (et.getHours() * 100 + et.getMinutes()) >= 930 && (et.getHours() * 100 + et.getMinutes()) <= 1600;
     const delay = usOpen ? 180000 : 1800000; // 장중 3분, 장외 30분
-    _rsTimeouts.push(setTimeout(() => {
+    _usRefreshId = setTimeout(() => {
       rsLoadUS();
       _scheduleUSRefresh();
-    }, delay));
+    }, delay);
   }
   function _scheduleKRRefresh() {
+    if (_krRefreshId) clearTimeout(_krRefreshId);
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
     const kst = new Date(utc + 9 * 3600000);
     const krOpen = kst.getDay() >= 1 && kst.getDay() <= 5 && (kst.getHours() * 100 + kst.getMinutes()) >= 900 && (kst.getHours() * 100 + kst.getMinutes()) <= 1530;
     const delay = krOpen ? 180000 : 1800000; // 장중 3분, 장외 30분
-    _rsTimeouts.push(setTimeout(() => {
+    _krRefreshId = setTimeout(() => {
       rsLoadKR();
       _scheduleKRRefresh();
-    }, delay));
+    }, delay);
   }
   _scheduleUSRefresh();
   _scheduleKRRefresh();
 
-  // 8초마다 UI 점진적 갱신
+  // 15초마다 상태바만 갱신 (탭별 테이블 갱신은 app.js에서 담당)
   _rsIntervals.push(setInterval(() => {
     rsUpdateStatus("us");
     rsUpdateStatus("kr");
-    if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
-    if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
-  }, 8000));
+  }, 15000));
 }
 
 
