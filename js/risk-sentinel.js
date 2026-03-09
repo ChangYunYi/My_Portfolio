@@ -593,6 +593,8 @@ async function rsLoadKR() {
    ═══════════════════════════════════════════════════════ */
 
 let _rsRetryCount = 0;
+let _rsRefreshId = null;
+
 async function startRSSentinel() {
   if (!P || !P.index || !P.dividend || !P.growth || !P.kr) {
     if (++_rsRetryCount > 10) { console.error("[RS] P 로드 실패, 재시도 중단"); return; }
@@ -605,36 +607,51 @@ async function startRSSentinel() {
   // 이미 시작된 경우 데이터만 재로드 (타이머 중복 방지)
   if (_rsSentinelStarted) {
     console.log("[RS] 이미 실행중, 데이터만 재로드");
-    rsLoadVIX();
-    _rsLoadSequential();
+    // 리더 탭만 네트워크 fetch 수행
+    if (typeof TabGuard !== "undefined" && TabGuard.isLeader) {
+      rsLoadVIX();
+      _rsLoadSequential();
+    }
     return;
   }
   _rsSentinelStarted = true;
 
   // DB 캐시 복원 (1시간 이내 데이터만, 오래된 항목은 삭제)
   const _cacheMaxAge = 3600000; // 1시간
+  const MAX_CACHED_PER_STORE = 80; // 최대 캐시 레코드 수 제한
   const [cachedUS, cachedKR] = await Promise.all([rsDbGetAll("rsUS"), rsDbGetAll("rsKR")]);
-  cachedUS.forEach(r => {
-    if (r.k && r.v?.loaded && r.ts && (Date.now() - r.ts < _cacheMaxAge)) {
-      RS_US.data[r.k] = r.v;
-    } else if (r.k) { rsDbDel("rsUS", r.k); }
-  });
-  cachedKR.forEach(r => {
-    if (r.k && r.v?.loaded && r.ts && (Date.now() - r.ts < _cacheMaxAge)) {
-      RS_KR.data[r.k] = r.v;
-    } else if (r.k) { rsDbDel("rsKR", r.k); }
-  });
+
+  // 오래된 순으로 정렬 후 초과분 삭제
+  const _restoreAndTrim = (cached, store, storeObj) => {
+    const sorted = cached.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    sorted.forEach((r, i) => {
+      if (i >= MAX_CACHED_PER_STORE) {
+        // 초과 레코드 삭제
+        if (r.k) rsDbDel(store, r.k);
+      } else if (r.k && r.v?.loaded && r.ts && (Date.now() - r.ts < _cacheMaxAge)) {
+        storeObj.data[r.k] = r.v;
+      } else if (r.k) { rsDbDel(store, r.k); }
+    });
+  };
+  _restoreAndTrim(cachedUS, "rsUS", RS_US);
+  _restoreAndTrim(cachedKR, "rsKR", RS_KR);
+
   if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
 
-  // VIX + 직렬 로딩 (US→KR 순차, 동시 fetch 폭주 방지)
-  rsLoadVIX();
-  _rsLoadSequential();
+  // 리더 탭만 실제 네트워크 fetch 수행 (비리더는 IndexedDB 캐시만 사용)
+  const isLeader = typeof TabGuard === "undefined" || TabGuard.isLeader;
+  if (isLeader) {
+    rsLoadVIX();
+    _rsLoadSequential();
+  }
 
-  // VIX 10분마다 갱신
-  _rsIntervals.push(setInterval(rsLoadVIX, 600000));
+  // VIX 10분마다 갱신 (리더만)
+  _rsIntervals.push(setInterval(() => {
+    if (typeof TabGuard !== "undefined" && !TabGuard.isLeader) return;
+    rsLoadVIX();
+  }, 600000));
 
-  // 장중 3분 / 장외 30분 적응형 갱신 (US+KR 직렬, 단일 스케줄러)
-  let _rsRefreshId = null;
+  // 장중 3분 / 장외 30분 적응형 갱신 (리더만)
   function _scheduleRefresh() {
     if (_rsRefreshId) clearTimeout(_rsRefreshId);
     const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
@@ -643,16 +660,22 @@ async function startRSSentinel() {
     const usOpen = et.getDay() >= 1 && et.getDay() <= 5 && (et.getHours() * 100 + et.getMinutes()) >= 930 && (et.getHours() * 100 + et.getMinutes()) <= 1600;
     const krOpen = kst.getDay() >= 1 && kst.getDay() <= 5 && (kst.getHours() * 100 + kst.getMinutes()) >= 900 && (kst.getHours() * 100 + kst.getMinutes()) <= 1530;
     const anyOpen = usOpen || krOpen;
-    const delay = anyOpen ? 180000 : 1800000; // 장중 3분, 장외 30분
+    const delay = anyOpen ? 180000 : 1800000;
     _rsRefreshId = setTimeout(async () => {
+      // 비활성 탭이면 건너뛰고 다음 스케줄
+      if (typeof TabGuard !== "undefined" && (!TabGuard.isLeader || !TabGuard.isVisible)) {
+        _scheduleRefresh();
+        return;
+      }
       await _rsLoadSequential();
       _scheduleRefresh();
     }, delay);
   }
   _scheduleRefresh();
 
-  // 15초마다 상태바만 갱신 (탭별 테이블 갱신은 app.js에서 담당)
+  // 15초마다 상태바만 갱신 (UI만, 모든 탭에서 가능하나 비활성이면 건너뜀)
   _rsIntervals.push(setInterval(() => {
+    if (typeof TabGuard !== "undefined" && !TabGuard.isVisible) return;
     rsUpdateStatus("us");
     rsUpdateStatus("kr");
   }, 15000));

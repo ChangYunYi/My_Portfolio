@@ -267,19 +267,20 @@ function openStock(ticker, market, name, stype) {
       overlay = document.createElement("div");
       overlay.id = "stockModal";
       overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column";
-      const bar = document.createElement("div");
-      bar.style.cssText = "display:flex;align-items:center;padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--bdr);flex-shrink:0";
-      bar.innerHTML = '<button onclick="closeStockModal(true)" style="background:none;border:1px solid var(--bdr);color:var(--txt);padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">← 돌아가기</button><span style="margin-left:12px;font-size:14px;font-weight:800;color:var(--txt)">' + name + '</span>';
-      const frame = document.createElement("iframe");
-      frame.id = "stockFrame";
-      frame.style.cssText = "flex:1;border:none;width:100%";
-      overlay.appendChild(bar);
-      overlay.appendChild(frame);
       document.body.appendChild(overlay);
     }
+    // 매번 내부를 재생성 (이전 iframe 잔재 방지)
+    overlay.innerHTML = '';
+    const bar = document.createElement("div");
+    bar.style.cssText = "display:flex;align-items:center;padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--bdr);flex-shrink:0";
+    bar.innerHTML = '<button onclick="closeStockModal(true)" style="background:none;border:1px solid var(--bdr);color:var(--txt);padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">← 돌아가기</button><span style="margin-left:12px;font-size:14px;font-weight:800;color:var(--txt)">' + name + '</span>';
+    const frame = document.createElement("iframe");
+    frame.id = "stockFrame";
+    frame.style.cssText = "flex:1;border:none;width:100%";
+    overlay.appendChild(bar);
+    overlay.appendChild(frame);
     overlay.style.display = "flex";
-    overlay.querySelector("span").textContent = name;
-    document.getElementById("stockFrame").src = url;
+    frame.src = url;
     document.body.style.overflow = "hidden";
     history.pushState({ modal: true }, "");
   } else {
@@ -291,8 +292,14 @@ function openStock(ticker, market, name, stype) {
 function closeStockModal(fromBtn) {
   const m = document.getElementById("stockModal");
   if (m && m.style.display === "flex") {
+    // iframe 완전 해제 (메모리 누수 방지)
+    const frame = document.getElementById("stockFrame");
+    if (frame) {
+      try { frame.contentWindow?.stop?.(); } catch {}
+      frame.src = "about:blank";
+      frame.remove();
+    }
     m.style.display = "none";
-    document.getElementById("stockFrame").src = "";
     document.body.style.overflow = "";
     if (fromBtn) history.back();
   }
@@ -1359,23 +1366,33 @@ function _isKRMarketOpen() {
 
 let _countdown = REFRESH_SEC;
 let _resizeTimer;
+let _autoRefreshTimer = null;
 
 function startAutoRefresh() {
-  setInterval(() => {
+  stopAutoRefresh();
+  _autoRefreshTimer = setInterval(() => {
+    // 비활성 탭이면 카운트다운만 (fetch 안 함)
+    if (!TabGuard.isVisible) return;
     _countdown--;
     const m = Math.floor(_countdown / 60), s = _countdown % 60;
     const el = document.getElementById("refreshTimer");
     if (el) el.textContent = `${m}:${String(s).padStart(2, "0")}`;
     if (_countdown <= 0) {
       _countdown = REFRESH_SEC;
-      loadAllSheets();
+      // 리더 탭만 실제 데이터 fetch
+      if (TabGuard.isLeader) loadAllSheets();
     }
   }, 1000);
+}
+
+function stopAutoRefresh() {
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
 }
 
 window.addEventListener("resize", () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
+    if (!TabGuard.isVisible) return; // 비활성 탭이면 리사이즈 무시
     Object.values(charts).forEach(c => c.resize());
     if (activeTab === "overview") {
       if (P._tmUSD?.length) renderTreemap("tmUSD", P._tmUSD, fU);
@@ -1385,10 +1402,31 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("DOMContentLoaded", async () => {
+  // TabGuard 초기화 — 멀티탭 리소스 충돌 방지
+  TabGuard.init({
+    onBecomeLeader: () => {
+      console.log("[App] 리더 탭 → 데이터 fetch 시작");
+      // 리더가 되면 즉시 데이터 갱신 시작
+      if (P.index) { _countdown = REFRESH_SEC; loadAllSheets(); }
+    },
+    onLoseLeader: () => {
+      console.log("[App] 리더 양보 → fetch 일시 중단");
+    },
+    onVisibilityChange: (visible) => {
+      if (visible) {
+        // 탭 복귀 시 UI 갱신 (데이터는 리더만)
+        if (activeTab) switchTab(activeTab);
+      } else {
+        // 비활성 탭: UI 갱신 타이머 정지 (메모리 절약)
+        _stopUSTabRefresh();
+        _stopKRTabRefresh();
+      }
+    }
+  });
+
   // 1) 캐시된 JSON으로 빠른 첫 로딩
   const cached = await loadFromCache();
   if (!cached) {
-    // 캐시 실패 시 구글시트에서 직접 로딩
     await loadAllSheets();
   }
   // 2) 이후 10분 간격으로 구글시트에서 실시간 데이터 갱신
@@ -1397,7 +1435,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
 // ── Chrome 크래시 방지: SW 완전 초기화 + 캐시 전량 삭제 ──
 (async function _initSW() {
-  // 1) 기존 SW 전부 해제 (이전 버전이 캐시를 무한 축적하던 문제)
+  // 1) 기존 SW 전부 해제
   if ('serviceWorker' in navigator) {
     try {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -1407,7 +1445,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     } catch (e) { console.warn('[SW] 해제 실패:', e); }
   }
-  // 2) Cache Storage 전량 삭제 (이전 SW가 쌓아둔 외부 API 응답 포함)
+  // 2) Cache Storage 전량 삭제
   if ('caches' in window) {
     try {
       const keys = await caches.keys();
@@ -1417,8 +1455,13 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     } catch (e) { console.warn('[Cache] 삭제 실패:', e); }
   }
-  // 3) 새 SW 등록
+  // 3) 새 SW 등록 (리더 탭만)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // SW 등록은 지연 — TabGuard 초기화 후 리더만 등록
+    setTimeout(() => {
+      if (TabGuard.isLeader) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      }
+    }, 2000);
   }
 })();
