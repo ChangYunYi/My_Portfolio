@@ -2,19 +2,11 @@
    config.js — 전역 상수 및 설정
    ═══════════════════════════════════════════════════════ */
 
-/** Google Sheets 문서 ID (공개 읽기 전용) */
-const SID = "1b9GtLud9TDFm4AvUnCEfDGu_4CTqYfRU8oYFAh2VSxc";
+/** 데이터 소스: data/holdings.json + data/market.json + data/macro.json */
+/** (메인 대시보드는 Google Sheets 직접 로딩 제거 → GitHub Actions가 market.json 갱신) */
 
-/** 로드할 시트 이름 목록 */
-const SHEETS = [
-  "TotalBoard",
-  "지수형 포트폴리오",
-  "배당 포트폴리오",
-  "성장 포트폴리오",
-  "국내 포트폴리오",
-  "데이터시트",
-  "데이터시트2"
-];
+/** Google Sheets 문서 ID (stock-detail.js 호환용) */
+const SID = "1b9GtLud9TDFm4AvUnCEfDGu_4CTqYfRU8oYFAh2VSxc";
 
 /** 대시보드 탭 정의 */
 const TABS = [
