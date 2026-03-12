@@ -190,15 +190,10 @@ async function rsUSCandles(sym) {
   return { closes: rsParseCandles(j), ohlcv: rsParseOHLCV(j) };
 }
 
-/** KR 티커를 Yahoo 심볼로 변환 (예: "426030" → "426030.KS")
- *  KIS_TICKER_MAP에 매핑된 실제 KRX 코드가 있으면 우선 사용 */
+/** KR 티커를 Yahoo 심볼로 변환 (예: "426030" → "426030.KS") */
 function rsKRTicker(t) {
   if (!t) return t;
   t = t.trim();
-  // KIS_TICKER_MAP에서 실제 종목코드 매핑 (비표준 티커 → 표준 6자리)
-  if (typeof KIS_TICKER_MAP !== "undefined" && KIS_TICKER_MAP[t]) {
-    return KIS_TICKER_MAP[t] + ".KS";
-  }
   if (t.endsWith(".KS") || t.endsWith(".KQ")) return t;
   if (t.startsWith("KRX:")) return t.replace("KRX:", "") + ".KS";
   if (/^[0-9][A-Z0-9]{4,6}$/i.test(t)) return t + ".KS";
