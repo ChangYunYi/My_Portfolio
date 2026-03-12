@@ -48,26 +48,25 @@ const TARGET_GROWTH   = 50000;
 const REFRESH_SEC = 600;
 
 /* ── KIS (한국투자증권) OpenAPI 설정 ──────────────────
-   ⚠ 보안주의: 이 키는 브라우저 소스에 노출됩니다.
-     모의투자 키를 사용하거나, Cloudflare Worker 프록시에서
-     키를 관리하는 것을 권장합니다.
-   발급: https://apiportal.koreainvestment.com → API관리 → 앱키 발급
+   Cloudflare Worker 프록시 사용 시:
+     → KIS_PROXY_URL만 입력하면 됨 (키는 Worker에 저장)
+     → KIS_APP_KEY / KIS_APP_SECRET는 비워두세요
+   직접 호출 시: 키를 아래에 입력 (⚠ 브라우저 소스에 노출)
    ─────────────────────────────────────────────────── */
 
-/** KIS 앱키 (발급 후 여기에 입력) */
+/** KIS 앱키 (Worker 프록시 사용 시 비워두기) */
 const KIS_APP_KEY = "";
 
-/** KIS 앱시크릿 (발급 후 여기에 입력) */
+/** KIS 앱시크릿 (Worker 프록시 사용 시 비워두기) */
 const KIS_APP_SECRET = "";
 
-/** KIS API 베이스 URL
+/** KIS API 베이스 URL (Worker 프록시 사용 시 무시됨)
  *  실전투자: "https://openapi.koreainvestment.com:9443"
  *  모의투자: "https://openapivts.koreainvestment.com:29443" */
 const KIS_BASE_URL = "https://openapi.koreainvestment.com:9443";
 
-/** KIS CORS 프록시 URL (Cloudflare Worker 배포 후 입력)
- *  KIS API는 브라우저 직접 호출 시 CORS 차단됨.
- *  workers/kis-proxy.js를 Cloudflare에 배포 후 URL을 입력하세요.
+/** KIS CORS 프록시 URL ← 여기만 입력하면 끝!
+ *  workers/kis-proxy.js를 Cloudflare에 배포 후 URL 입력.
  *  예: "https://kis-proxy.yourname.workers.dev" */
 const KIS_PROXY_URL = "";
 

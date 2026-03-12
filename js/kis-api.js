@@ -18,12 +18,19 @@ const KIS = (() => {
 
   /* ── 설정 확인 ── */
 
+  function _hasLocalKeys() {
+    return !!(typeof KIS_APP_KEY !== "undefined" && KIS_APP_KEY &&
+              typeof KIS_APP_SECRET !== "undefined" && KIS_APP_SECRET);
+  }
+
+  function _hasProxy() {
+    return !!(typeof KIS_PROXY_URL !== "undefined" && KIS_PROXY_URL);
+  }
+
+  /** Worker 프록시 설정만 있어도 동작 (키는 Worker에 저장) */
   function isReady() {
     if (_failCount > FAIL_THRESHOLD) return false;
-    return !!(
-      typeof KIS_APP_KEY !== "undefined" && KIS_APP_KEY &&
-      typeof KIS_APP_SECRET !== "undefined" && KIS_APP_SECRET
-    );
+    return _hasLocalKeys() || _hasProxy();
   }
 
 
@@ -93,15 +100,17 @@ const KIS = (() => {
       }
     } catch {}
 
-    // 신규 발급
+    // 신규 발급 (프록시 모드: Worker가 키를 주입하므로 빈 값 허용)
+    const body = { grant_type: "client_credentials" };
+    if (_hasLocalKeys()) {
+      body.appkey = KIS_APP_KEY;
+      body.appsecret = KIS_APP_SECRET;
+    }
+
     const r = await fetch(_url("/oauth2/tokenP"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        grant_type: "client_credentials",
-        appkey: KIS_APP_KEY,
-        appsecret: KIS_APP_SECRET,
-      }),
+      body: JSON.stringify(body),
       signal: _sig(10000),
     });
 
@@ -137,14 +146,19 @@ const KIS = (() => {
       FID_INPUT_ISCD: stockCode,
     });
 
+    // 프록시 모드: Worker가 appkey/appsecret 헤더를 주입
+    const headers = {
+      "Content-Type": "application/json; charset=utf-8",
+      "authorization": "Bearer " + token,
+      "tr_id": "FHKST01010100",
+    };
+    if (_hasLocalKeys()) {
+      headers["appkey"] = KIS_APP_KEY;
+      headers["appsecret"] = KIS_APP_SECRET;
+    }
+
     const r = await fetch(_url("/uapi/domestic-stock/v1/quotations/inquire-price?" + params), {
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "authorization": "Bearer " + token,
-        "appkey": KIS_APP_KEY,
-        "appsecret": KIS_APP_SECRET,
-        "tr_id": "FHKST01010100",
-      },
+      headers,
       signal: _sig(8000),
     });
 
@@ -216,8 +230,8 @@ const KIS = (() => {
 
   function status() {
     return {
-      configured: !!(typeof KIS_APP_KEY !== "undefined" && KIS_APP_KEY),
-      hasProxy: !!_proxy(),
+      configured: _hasLocalKeys(),
+      hasProxy: _hasProxy(),
       hasToken: !!(_token && Date.now() < _tokenExpiry),
       failCount: _failCount,
       disabled: _failCount > FAIL_THRESHOLD,
