@@ -2,10 +2,23 @@
    config.js — 전역 상수 및 설정
    ═══════════════════════════════════════════════════════ */
 
-/** 데이터 소스: data/holdings.json + data/market.json + data/macro.json */
-/** (메인 대시보드는 Google Sheets 직접 로딩 제거 → GitHub Actions가 market.json 갱신) */
+/**
+ * 데이터 소스 아키텍처:
+ * ────────────────────────────────────────────────────
+ *  [GitHub Actions → JSON 파일 (정적)]
+ *   • holdings.json  ← Google Sheets (하루 1회, 보유수량/평단가)
+ *   • market.json    ← FMP + Yahoo (30분, 시세/기술지표)
+ *   • macro.json     ← FRED (10분, 경제지표)
+ *   • sheets.json    ← Google Sheets (6시간, stock-detail.js 메트릭용)
+ *
+ *  [브라우저 실시간]
+ *   • Finnhub        ← US 현재가 (risk-sentinel.js)
+ *   • KIS API        ← KR 현재가/분봉/투자자동향 (kis-api.js)
+ *   • Yahoo Finance  ← US/KR 차트 + 폴백 (risk-sentinel.js)
+ * ────────────────────────────────────────────────────
+ */
 
-/** Google Sheets 문서 ID (stock-detail.js 호환용) */
+/** Google Sheets 문서 ID (stock-detail.js JSONP용) */
 const SID = "1b9GtLud9TDFm4AvUnCEfDGu_4CTqYfRU8oYFAh2VSxc";
 
 /** 대시보드 탭 정의 */

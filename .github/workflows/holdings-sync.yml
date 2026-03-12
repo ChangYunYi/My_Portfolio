@@ -1,15 +1,15 @@
-name: Cache Google Sheets Data (stock-detail.js용)
+name: Sync Holdings from Google Sheets
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # 6시간마다 실행 (stock-detail.js 메트릭/재무용)
-  workflow_dispatch:          # 수동 실행 가능
+    - cron: "0 21 * * *"   # 매일 UTC 21:00 (KST 06:00) 1회 실행
+  workflow_dispatch:        # 수동 실행 가능
 
 permissions:
   contents: write
 
 jobs:
-  fetch:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,17 +18,17 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Fetch Google Sheets data
-        run: node scripts/fetch-sheets.js
+      - name: Fetch holdings from Google Sheets
+        run: node scripts/fetch-holdings.js
 
       - name: Commit & push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/sheets.json
+          git add data/holdings.json
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore: update sheets cache $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git commit -m "chore: sync holdings from Google Sheets $(date -u +'%Y-%m-%d')"
             git push
           fi
