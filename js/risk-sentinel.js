@@ -1,8 +1,9 @@
 /* ═══════════════════════════════════════════════════════
-   RISK SENTINEL ENGINE v2 — 미장 / 국장 완전 분리
+   RISK SENTINEL ENGINE v3 — 장중/장외 적응형 + 병렬 로딩
    ▸ RS_US : 미국 종목 전용 (index + dividend + growth)
    ▸ RS_KR : 국내 종목 전용 (kr)
-   ▸ 각 시장 독립 로드 · 상태 · UI 업데이트
+   ▸ 장외: IndexedDB 캐시 사용 (네트워크 fetch 안함)
+   ▸ 장중: 병렬 배치 로드 + 인터벌 자동 갱신
 
    의존: config.js (FHKEY, KR_SECTORS)
          utils.js  (rsSafeId, fU, fK, fP, pc, isETF)
@@ -18,6 +19,19 @@ const RS_KR = { data: {}, status: { loading: false, loaded: 0, total: 0, lastUp:
 // ── Sentinel 타이머 관리 (중복 방지) ──
 let _rsSentinelStarted = false;
 const _rsIntervals = [];
+
+/* ── 장중/장외 판별 ── */
+function rsMarketStatus() {
+  const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const et = new Date(utc - 5 * 3600000);
+  const kst = new Date(utc + 9 * 3600000);
+  const etHM = et.getHours() * 100 + et.getMinutes();
+  const kstHM = kst.getHours() * 100 + kst.getMinutes();
+  const wd = d => d.getDay() >= 1 && d.getDay() <= 5;
+  const usOpen = wd(et) && etHM >= 930 && etHM <= 1600;
+  const krOpen = wd(kst) && kstHM >= 900 && kstHM <= 1530;
+  return { usOpen, krOpen, anyOpen: usOpen || krOpen };
+}
 
 
 /* ═══════════════════════════════════════════════════════
@@ -505,23 +519,21 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   const dbStore = isKR ? "rsKR" : "rsUS";
   store.data[portTicker] = { ...(store.data[portTicker] || {}), loading: true };
 
-  let q;
   const fetchTicker = isKR ? rsKRTicker(portTicker) : portTicker;
-  if (isKR) {
-    // ① KIS API 우선 시도 (실시간 시세)
-    if (typeof KIS !== "undefined" && KIS.isReady()) {
-      q = await KIS.getQuote(portTicker);
+
+  // quote + candle 병렬 요청
+  const quoteP = (async () => {
+    if (isKR) {
+      let q;
+      if (typeof KIS !== "undefined" && KIS.isReady()) q = await KIS.getQuote(portTicker);
+      if (!q || !(q.c > 0)) q = await rsKRQuote(fetchTicker);
+      return q;
     }
-    // ② KIS 실패 시 Yahoo Finance 폴백
-    if (!q || !(q.c > 0)) {
-      q = await rsKRQuote(fetchTicker);
-    }
-  } else {
-    q = await rsUSQuote(portTicker);
-  }
-  await RSW(130);
-  const candleResult = isKR ? await rsKRCandles(fetchTicker) : await rsUSCandles(fetchTicker);
-  await RSW(130);
+    return rsUSQuote(portTicker);
+  })();
+  const candleP = isKR ? rsKRCandles(fetchTicker) : rsUSCandles(fetchTicker);
+
+  const [q, candleResult] = await Promise.all([quoteP, candleP]);
 
   if (!q || !(q.c > 0)) { store.data[portTicker] = { loading: false, error: true }; return; }
 
@@ -560,44 +572,49 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   }
 }
 
-/** US → KR 직렬 로딩 (동시 fetch 폭주 방지) */
+/** 배치 병렬 처리 — batchSize개씩 동시 fetch 후 다음 배치 */
+async function _rsBatchLoad(stocks, mkt, isKR, batchSize) {
+  const store = isKR ? RS_KR : RS_US;
+  store.status.loading = true;
+  store.status.loaded = 0;
+  store.status.total = stocks.length;
+  rsUpdateStatus(mkt);
+
+  for (let i = 0; i < stocks.length; i += batchSize) {
+    const batch = stocks.slice(i, i + batchSize);
+    await Promise.all(batch.map(h => rsProcessOne(mkt, h.ticker, isKR)));
+    if (i + batchSize < stocks.length) await RSW(80);
+  }
+
+  store.status.loading = false;
+  store.status.lastUp = new Date();
+  rsUpdateStatus(mkt);
+}
+
+/** US/KR 병렬 로딩 (장중) */
 let _rsSeqRunning = false;
-async function _rsLoadSequential() {
+async function _rsLoadAll() {
   if (_rsSeqRunning) return;
   _rsSeqRunning = true;
   try {
-    await rsLoadUS();
-    await rsLoadKR();
+    const mkt = rsMarketStatus();
+    const usStocks = [...P.index, ...P.dividend, ...P.growth].filter(h => h.ticker?.trim());
+    const krStocks = (P.kr || []).filter(h => h.ticker?.trim());
+
+    // US와 KR 병렬 로드 (각각 내부에서 3개씩 배치 병렬)
+    const tasks = [];
+    if (usStocks.length) tasks.push(_rsBatchLoad(usStocks, "us", false, 3).then(() => {
+      if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
+    }));
+    if (krStocks.length) tasks.push(_rsBatchLoad(krStocks, "kr", true, 2).then(() => {
+      if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
+    }));
+    await Promise.all(tasks);
   } finally { _rsSeqRunning = false; }
 }
 
-async function rsLoadUS() {
-  if (RS_US.status.loading) return;
-  RS_US.status.loading = true;
-  RS_US.status.loaded = 0;
-  const stocks = [...P.index, ...P.dividend, ...P.growth].filter(h => h.ticker && h.ticker.trim() !== "");
-  RS_US.status.total = stocks.length;
-  rsUpdateStatus("us");
-  for (const h of stocks) await rsProcessOne("us", h.ticker, false);
-  RS_US.status.loading = false;
-  RS_US.status.lastUp = new Date();
-  rsUpdateStatus("us");
-  if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
-}
-
-async function rsLoadKR() {
-  if (RS_KR.status.loading) return;
-  RS_KR.status.loading = true;
-  RS_KR.status.loaded = 0;
-  const stocks = (P.kr || []).filter(h => h.ticker && h.ticker.trim() !== "");
-  RS_KR.status.total = stocks.length;
-  rsUpdateStatus("kr");
-  for (const h of stocks) await rsProcessOne("kr", h.ticker, true);
-  RS_KR.status.loading = false;
-  RS_KR.status.lastUp = new Date();
-  rsUpdateStatus("kr");
-  if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
-}
+// 하위호환
+async function _rsLoadSequential() { return _rsLoadAll(); }
 
 
 /* ═══════════════════════════════════════════════════════
@@ -619,73 +636,102 @@ async function startRSSentinel() {
   // 이미 시작된 경우 데이터만 재로드 (타이머 중복 방지)
   if (_rsSentinelStarted) {
     console.log("[RS] 이미 실행중, 데이터만 재로드");
-    // 리더 탭만 네트워크 fetch 수행
-    if (typeof TabGuard !== "undefined" && TabGuard.isLeader) {
+    const isLeader = typeof TabGuard === "undefined" || TabGuard.isLeader;
+    if (isLeader && rsMarketStatus().anyOpen) {
       rsLoadVIX();
-      _rsLoadSequential();
+      _rsLoadAll();
     }
     return;
   }
   _rsSentinelStarted = true;
 
-  // DB 캐시 복원 (1시간 이내 데이터만, 오래된 항목은 삭제)
-  const _cacheMaxAge = 3600000; // 1시간
-  const MAX_CACHED_PER_STORE = 80; // 최대 캐시 레코드 수 제한
+  const mkt = rsMarketStatus();
+
+  // 장외: 12시간 캐시 유효, 장중: 1시간
+  const _cacheMaxAge = mkt.anyOpen ? 3600000 : 43200000;
+  const MAX_CACHED_PER_STORE = 80;
   const [cachedUS, cachedKR] = await Promise.all([rsDbGetAll("rsUS"), rsDbGetAll("rsKR")]);
 
-  // 오래된 순으로 정렬 후 초과분 삭제
   const _restoreAndTrim = (cached, store, storeObj) => {
     const sorted = cached.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    let restored = 0;
     sorted.forEach((r, i) => {
       if (i >= MAX_CACHED_PER_STORE) {
-        // 초과 레코드 삭제
         if (r.k) rsDbDel(store, r.k);
       } else if (r.k && r.v?.loaded && r.ts && (Date.now() - r.ts < _cacheMaxAge)) {
         storeObj.data[r.k] = r.v;
+        restored++;
       } else if (r.k) { rsDbDel(store, r.k); }
     });
+    return restored;
   };
-  _restoreAndTrim(cachedUS, "rsUS", RS_US);
-  _restoreAndTrim(cachedKR, "rsKR", RS_KR);
+  const restoredUS = _restoreAndTrim(cachedUS, "rsUS", RS_US);
+  const restoredKR = _restoreAndTrim(cachedKR, "rsKR", RS_KR);
 
-  if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
-
-  // 리더 탭만 실제 네트워크 fetch 수행 (비리더는 IndexedDB 캐시만 사용)
-  const isLeader = typeof TabGuard === "undefined" || TabGuard.isLeader;
-  if (isLeader) {
-    rsLoadVIX();
-    _rsLoadSequential();
+  // 캐시 복원 시 즉시 UI 반영
+  if (restoredUS > 0) {
+    RS_US.status.loaded = restoredUS;
+    RS_US.status.total = restoredUS;
+    RS_US.status.lastUp = new Date(Math.max(...Object.values(RS_US.data).map(d => d.loadedAt || 0)));
+    rsUpdateStatus("us");
+    if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
+  }
+  if (restoredKR > 0) {
+    RS_KR.status.loaded = restoredKR;
+    RS_KR.status.total = restoredKR;
+    RS_KR.status.lastUp = new Date(Math.max(...Object.values(RS_KR.data).map(d => d.loadedAt || 0)));
+    rsUpdateStatus("kr");
+    if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
   }
 
-  // VIX 10분마다 갱신 (리더만)
+  const isLeader = typeof TabGuard === "undefined" || TabGuard.isLeader;
+
+  if (mkt.anyOpen && isLeader) {
+    // 장중: 네트워크 fetch 수행
+    console.log("[RS] 장중 모드 — 실시간 데이터 로드" + (mkt.usOpen ? " (US)" : "") + (mkt.krOpen ? " (KR)" : ""));
+    rsLoadVIX();
+    _rsLoadAll();
+  } else if (!mkt.anyOpen) {
+    // 장외: 캐시만 사용, 네트워크 요청 안함
+    console.log("[RS] 장외 모드 — 캐시 데이터 사용 (US: " + restoredUS + "건, KR: " + restoredKR + "건)");
+    // 캐시가 전혀 없으면 한 번만 fetch
+    if (restoredUS === 0 && restoredKR === 0 && isLeader) {
+      console.log("[RS] 캐시 없음 — 최초 1회 로드");
+      rsLoadVIX();
+      _rsLoadAll();
+    }
+  }
+
+  // VIX 갱신 (장중 5분, 장외 안함)
   _rsIntervals.push(setInterval(() => {
     if (typeof TabGuard !== "undefined" && !TabGuard.isLeader) return;
+    if (!rsMarketStatus().anyOpen) return;
     rsLoadVIX();
-  }, 600000));
+  }, 300000));
 
-  // 장중 3분 / 장외 30분 적응형 갱신 (리더만)
+  // 적응형 갱신 스케줄러
   function _scheduleRefresh() {
     if (_rsRefreshId) clearTimeout(_rsRefreshId);
-    const now = new Date(), utc = now.getTime() + now.getTimezoneOffset() * 60000;
-    const et = new Date(utc - 5 * 3600000);
-    const kst = new Date(utc + 9 * 3600000);
-    const usOpen = et.getDay() >= 1 && et.getDay() <= 5 && (et.getHours() * 100 + et.getMinutes()) >= 930 && (et.getHours() * 100 + et.getMinutes()) <= 1600;
-    const krOpen = kst.getDay() >= 1 && kst.getDay() <= 5 && (kst.getHours() * 100 + kst.getMinutes()) >= 900 && (kst.getHours() * 100 + kst.getMinutes()) <= 1530;
-    const anyOpen = usOpen || krOpen;
-    const delay = anyOpen ? 180000 : 1800000;
+    const ms = rsMarketStatus();
+    // 장중: 3분, 장외: 갱신 안함 (다음 장 시작 체크만 30분)
+    const delay = ms.anyOpen ? 180000 : 1800000;
     _rsRefreshId = setTimeout(async () => {
-      // 비활성 탭이면 건너뛰고 다음 스케줄
       if (typeof TabGuard !== "undefined" && (!TabGuard.isLeader || !TabGuard.isVisible)) {
         _scheduleRefresh();
         return;
       }
-      await _rsLoadSequential();
+      const cur = rsMarketStatus();
+      if (cur.anyOpen) {
+        // 장중: 데이터 갱신
+        await _rsLoadAll();
+      }
+      // 장외→장중 전환 감지를 위해 항상 재스케줄
       _scheduleRefresh();
     }, delay);
   }
   _scheduleRefresh();
 
-  // 15초마다 상태바만 갱신 (UI만, 모든 탭에서 가능하나 비활성이면 건너뜀)
+  // 15초마다 상태바만 갱신 (UI, 네트워크 없음)
   _rsIntervals.push(setInterval(() => {
     if (typeof TabGuard !== "undefined" && !TabGuard.isVisible) return;
     rsUpdateStatus("us");
@@ -709,8 +755,12 @@ function rsUpdateStatus(mkt) {
     el.innerHTML = `<span class="rs-dot-load"></span><span style="font-size:9px;color:var(--amber);font-weight:700">갱신중 ${st.loaded}/${st.total}</span>`;
   } else if (st.lastUp) {
     const hasRisk = Object.values(data).some(d => d.risks?.length > 0);
-    const sec = Math.round((Date.now() - st.lastUp.getTime()) / 1000);
-    el.innerHTML = `<span class="rs-dot-live"></span><span style="font-size:9px;color:${hasRisk ? "var(--red)" : "var(--green)"};font-weight:700">${hasRisk ? "⚠ 리스크 감지" : "✓ 정상"}</span><span style="font-size:8px;color:var(--mute);margin-left:5px">${st.lastUp.toLocaleTimeString("ko-KR")} (${sec}s전)</span>`;
+    const ms = rsMarketStatus();
+    const isThisMktOpen = isUS ? ms.usOpen : ms.krOpen;
+    const age = Date.now() - st.lastUp.getTime();
+    const ageTxt = age < 60000 ? Math.round(age / 1000) + "s전" : Math.round(age / 60000) + "m전";
+    const modeTxt = isThisMktOpen ? "" : " · 장외";
+    el.innerHTML = `<span class="rs-dot-live"></span><span style="font-size:9px;color:${hasRisk ? "var(--red)" : "var(--green)"};font-weight:700">${hasRisk ? "⚠ 리스크 감지" : "✓ 정상"}</span><span style="font-size:8px;color:var(--mute);margin-left:5px">${st.lastUp.toLocaleTimeString("ko-KR")} (${ageTxt}${modeTxt})</span>`;
   }
 }
 
