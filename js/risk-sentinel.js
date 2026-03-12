@@ -506,6 +506,7 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   store.data[portTicker] = { ...(store.data[portTicker] || {}), loading: true };
 
   let q;
+  const fetchTicker = isKR ? rsKRTicker(portTicker) : portTicker;
   if (isKR) {
     // ① KIS API 우선 시도 (실시간 시세)
     if (typeof KIS !== "undefined" && KIS.isReady()) {
@@ -513,7 +514,6 @@ async function rsProcessOne(mkt, portTicker, isKR) {
     }
     // ② KIS 실패 시 Yahoo Finance 폴백
     if (!q || !(q.c > 0)) {
-      const fetchTicker = rsKRTicker(portTicker);
       q = await rsKRQuote(fetchTicker);
     }
   } else {
