@@ -68,7 +68,7 @@ const KIS_BASE_URL = "https://openapi.koreainvestment.com:9443";
 /** KIS CORS 프록시 URL ← 여기만 입력하면 끝!
  *  workers/kis-proxy.js를 Cloudflare에 배포 후 URL 입력.
  *  예: "https://kis-proxy.yourname.workers.dev" */
-const KIS_PROXY_URL = "";
+const KIS_PROXY_URL = "https://kis-proxy.onaccess1.workers.dev";
 
 /** 포트폴리오 티커 → KIS 종목코드(6자리) 매핑
  *  holdings.json의 티커가 표준 6자리 숫자가 아닌 경우 여기서 매핑.
