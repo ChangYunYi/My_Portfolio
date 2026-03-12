@@ -757,8 +757,9 @@ function _updateKRTableRS() {
     }
   });
 
-  // 포트폴리오 합계 재계산
+  // 포트폴리오 합계 재계산 + 트리맵 갱신
   _recalcTotals();
+  _refreshTreemap();
 
   // KR 평가금액 요약 카드 업데이트
   const krValCards = document.querySelectorAll("#content .card .big");
@@ -866,8 +867,9 @@ function _updateUSTableRS() {
     }
   });
 
-  // 포트폴리오 합계 재계산
+  // 포트폴리오 합계 재계산 + 트리맵 갱신
   _recalcTotals();
+  _refreshTreemap();
 
   // 탭별 요약 카드 업데이트
   _updateTabSummary();
@@ -911,6 +913,59 @@ function _recalcTotals() {
   // 그랜드 토탈 업데이트
   const gtEl = document.getElementById("grandTotal");
   if (gtEl) gtEl.textContent = fU(Math.round(P.grand));
+}
+
+/** 트리맵 + overview 카드 실시간 갱신 (RS 데이터 반영) */
+function _refreshTreemap() {
+  if (activeTab !== "overview") return;
+  if (!document.getElementById("tmUSD")) return;
+
+  // USD 트리맵 데이터 재구성
+  P._tmUSD = [];
+  [{ arr: P.index, cat: "지수형" }, { arr: P.dividend, cat: "배당" }, { arr: P.growth, cat: "성장" }].forEach(g => {
+    [...g.arr].sort((a, b) => b.val - a.val).forEach(h =>
+      P._tmUSD.push({ label: h.name, ticker: h.ticker, origTicker: h.ticker, value: h.val, cat: g.cat, daily: h.daily, plp: h.plp, color: dailyColor(h.daily) })
+    );
+  });
+  renderTreemap("tmUSD", P._tmUSD, fU);
+
+  // KRW 트리맵 데이터 재구성
+  P._tmKRW = [];
+  [...P.kr].sort((a, b) => b.val - a.val).forEach(h =>
+    P._tmKRW.push({ label: h.name, ticker: h.name, origTicker: h.ticker, value: h.val, cat: "국내", daily: h.daily, plp: h.plp, color: dailyColor(h.daily) })
+  );
+  renderTreemap("tmKRW", P._tmKRW, fK);
+
+  // 트리맵 위 자산합계 레이블 업데이트
+  const tmGrid = document.getElementById("tmGrid");
+  if (tmGrid) {
+    const labels = tmGrid.querySelectorAll(".lbl span");
+    if (labels[0]) labels[0].textContent = fU(Math.round(P.usdAll));
+    if (labels[1]) labels[1].textContent = fU(Math.round(P.krT.val / P.rate));
+  }
+
+  // overview 상단 카드 업데이트 (달러자산, 원화자산)
+  const topGrid = document.getElementById("topGrid");
+  if (topGrid) {
+    const cards = topGrid.querySelectorAll(".card");
+    // cards[0]: 달러자산
+    if (cards[0]) {
+      const usdInv = P.idxT.inv + P.divT.inv + P.groT.inv;
+      const usdPl = P.usdAll - usdInv, usdPlp = usdInv > 0 ? (usdPl / usdInv * 100) : 0;
+      const big = cards[0].querySelector(".big");
+      const mid = cards[0].querySelector(".mid");
+      if (big) big.textContent = fU(Math.round(P.usdAll));
+      if (mid) { mid.style.color = pc(usdPl); mid.textContent = `${fP(usdPlp)} · ${usdPl >= 0 ? "+" : ""}${fU(Math.round(usdPl))}`; }
+    }
+    // cards[1]: 원화자산
+    if (cards[1]) {
+      const krPl = P.krT.val - P.krT.inv, krPlp = P.krT.inv > 0 ? (krPl / P.krT.inv * 100) : 0;
+      const big = cards[1].querySelector(".big");
+      const mid = cards[1].querySelector(".mid");
+      if (big) big.textContent = fK(P.krT.val);
+      if (mid) { mid.style.color = pc(krPl); mid.textContent = fP(krPlp); }
+    }
+  }
 }
 
 /** 탭별 요약 카드 실시간 업데이트 */
