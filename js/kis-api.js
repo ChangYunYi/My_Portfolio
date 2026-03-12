@@ -340,6 +340,6 @@ const KIS = (() => {
   }
 
 
-  return { isReady, getToken, fetchPrice, getQuote, getDailyChart, toKISCode, clearToken, status };
+  return { isReady, getQuote, getDailyChart, clearToken, status };
 
 })();
