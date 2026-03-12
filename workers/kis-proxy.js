@@ -44,7 +44,7 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, authorization, appkey, appsecret, tr_id, custtype",
+    "Access-Control-Allow-Headers": "Content-Type, authorization, appkey, appsecret, tr_id, tr_cont, custtype",
     "Access-Control-Max-Age": "86400",
   };
 }
