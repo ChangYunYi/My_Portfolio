@@ -138,8 +138,10 @@ function computeAll(holdings, market) {
   P.groT = { inv: sum(P.growth, "inv"), val: sum(P.growth, "val") };
   P.krT = { inv: sum(P.kr, "inv"), val: sum(P.kr, "val") };
   P.usdAll = P.idxT.val + P.divT.val + P.groT.val;
-  P.cashAll = P.cash.rp + P.cash.usd;
-  P.grand = P.usdAll + P.krT.val / P.rate + P.cashAll;
+  P.cashUsd = P.cash.rp + P.cash.usd;
+  P.cashKrw = P.cash.krw || 0;
+  P.cashAll = P.cashUsd; // 달러 현금 합계 (UI 표시용)
+  P.grand = P.usdAll + P.krT.val / P.rate + P.cashUsd + P.cashKrw / P.rate;
 
   // TotalBoard (렌더링 호환용)
   const rp = t => t.inv > 0 ? ((t.val - t.inv) / t.inv * 100) : 0;
@@ -336,8 +338,8 @@ function mkTable(items, isKR) {
         </td>
         <td class="mono" id="${prefix}price_${sid}"><div class="kr-cur">${cur}</div><div style="font-size:10px;color:var(--mute)">${isKR ? h.avg.toLocaleString() : fUd(h.avg)}</div></td>
         <td id="${prefix}daily_${sid}"><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
-        <td style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
-        <td><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
+        <td id="${prefix}plp_${sid}" style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
+        <td id="${prefix}val_${sid}"><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
         <td><span style="color:${h.divY >= 3 ? "var(--green)" : h.divY >= 1 ? "var(--amber)" : "var(--sub)"};font-weight:700;font-size:12px">${h.divY.toFixed(2)}%</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb20)};font-weight:700;font-size:12px">${h.bb20 || "-"}</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb252)};font-weight:700;font-size:12px">${h.bb252 || "-"}</span></td>
@@ -449,8 +451,8 @@ function renderOverview(el) {
           <div class="lbl">원화(₩) 자산</div><div class="big">${fK(P.krT.val)}</div>
           <div class="mid" style="color:${pc(krPl)};margin-top:4px">${fP(krPlp)}</div></div>
         <div class="card"><div class="topline" style="background:linear-gradient(90deg,var(--cyan),transparent)"></div>
-          <div class="lbl">현금 보유</div><div class="big">${fU(P.cashAll)}</div>
-          <div style="font-size:12px;color:var(--sub);margin-top:4px">RP ${fU(P.cash.rp)} · 예수금 ${fU(P.cash.usd)}</div></div>
+          <div class="lbl">현금 보유</div><div class="big">${fU(P.cashUsd)}${P.cashKrw > 0 ? ` <span style="font-size:14px;color:var(--sub)">+ ${fK(P.cashKrw)}</span>` : ""}</div>
+          <div style="font-size:12px;color:var(--sub);margin-top:4px">RP ${fU(P.cash.rp)} · 예수금 ${fU(P.cash.usd)}${P.cashKrw > 0 ? ` · 원화 ${fK(P.cashKrw)}` : ""}</div></div>
         <div class="card"><div class="topline" style="background:linear-gradient(90deg,var(--green),transparent)"></div>
           <div class="lbl">연간 배당</div><div class="big" style="color:var(--green)">${fU(Math.round(totalDiv))}</div>
           <div style="font-size:12px;color:var(--sub);margin-top:4px">월 ${fU(Math.round(totalDiv / 12))}</div></div>
@@ -661,8 +663,8 @@ function _mkKRTable(items) {
         </td>
         <td class="mono" id="krprice_${sid}"><div class="kr-cur">${cur}</div><div style="font-size:10px;color:var(--mute)">${h.avg.toLocaleString()}</div></td>
         <td id="krdaily_${sid}"><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
-        <td style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
-        <td><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
+        <td id="${prefix}plp_${sid}" style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
+        <td id="${prefix}val_${sid}"><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
         <td><span style="color:${h.divY >= 3 ? "var(--green)" : h.divY >= 1 ? "var(--amber)" : "var(--sub)"};font-weight:700;font-size:12px">${h.divY.toFixed(2)}%</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb20)};font-weight:700;font-size:12px">${h.bb20 || "-"}</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb252)};font-weight:700;font-size:12px">${h.bb252 || "-"}</span></td>
@@ -696,13 +698,32 @@ function _updateKRTableRS() {
       sparkEl.innerHTML = '<span style="font-size:8px;color:var(--mute)">—</span>';
     }
 
-    // 현재가 + 일변동 업데이트 (RS 실시간 데이터)
-    if (d?.loaded && d.price > 0 && priceEl) {
+    // 현재가 + 일변동 + 수익률 + 평가금 업데이트 (RS 실시간 데이터)
+    if (d?.loaded && d.price > 0) {
       const rsPrice = Math.round(d.price);
-      priceEl.querySelector(".kr-cur").textContent = rsPrice.toLocaleString();
+      // P 데이터 갱신
+      h.cur = rsPrice;
+      h.val = h.qty * rsPrice;
+      h.pl = h.val - h.inv;
+      h.plp = h.inv > 0 ? (h.pl / h.inv * 100) : 0;
+      h.daily = typeof d.changePct === "number" ? d.changePct : h.daily;
+
+      if (priceEl) {
+        priceEl.querySelector(".kr-cur").textContent = rsPrice.toLocaleString();
+      }
       if (dailyEl && typeof d.changePct === "number") {
-        const chg = d.changePct;
-        dailyEl.innerHTML = `<span class="${bc(chg)}">${fP(chg)}</span>`;
+        dailyEl.innerHTML = `<span class="${bc(d.changePct)}">${fP(d.changePct)}</span>`;
+      }
+      // 수익률 셀
+      const plpEl = document.getElementById("krplp_" + sid);
+      if (plpEl) {
+        plpEl.style.color = pc(h.plp);
+        plpEl.textContent = fP(h.plp);
+      }
+      // 평가금 셀
+      const valEl = document.getElementById("krval_" + sid);
+      if (valEl) {
+        valEl.innerHTML = `<div style="font-weight:700;font-size:12px;color:var(--txt2)">${fK(h.val)}</div><div style="font-size:10px;color:${pc(h.pl)}">${h.pl >= 0 ? "+" : ""}${fK(h.pl)}</div>`;
       }
     }
 
@@ -728,6 +749,25 @@ function _updateKRTableRS() {
       }
     }
   });
+
+  // 포트폴리오 합계 재계산
+  _recalcTotals();
+
+  // KR 평가금액 요약 카드 업데이트
+  const krValCards = document.querySelectorAll("#content .card .big");
+  if (krValCards.length > 0 && P.krT) {
+    const plp = P.krT.inv > 0 ? ((P.krT.val - P.krT.inv) / P.krT.inv * 100) : 0;
+    const firstCard = document.querySelector("#content .card");
+    if (firstCard) {
+      const bigEl = firstCard.querySelector(".big");
+      const midEl = firstCard.querySelector(".mid");
+      if (bigEl) bigEl.textContent = fK(P.krT.val);
+      if (midEl) {
+        midEl.style.color = pc(plp);
+        midEl.textContent = fP(plp);
+      }
+    }
+  }
 
   // 상태 표시
   const statusEl = document.getElementById("krRiskStatus");
@@ -768,11 +808,31 @@ function _updateUSTableRS() {
       sparkEl.innerHTML = '<span style="font-size:8px;color:var(--mute)">—</span>';
     }
 
-    // 현재가 + 일변동 업데이트
-    if (d?.loaded && d.price > 0 && priceEl) {
-      priceEl.querySelector(".kr-cur").textContent = "$" + d.price.toFixed(2);
+    // 현재가 + 일변동 + 수익률 + 평가금 업데이트
+    if (d?.loaded && d.price > 0) {
+      // P 데이터 갱신
+      h.cur = d.price;
+      h.val = h.qty * d.price;
+      h.pl = h.val - h.inv;
+      h.plp = h.inv > 0 ? (h.pl / h.inv * 100) : 0;
+      h.daily = typeof d.changePct === "number" ? d.changePct : h.daily;
+
+      if (priceEl) {
+        priceEl.querySelector(".kr-cur").textContent = "$" + d.price.toFixed(2);
+      }
       if (dailyEl && typeof d.changePct === "number") {
         dailyEl.innerHTML = `<span class="${bc(d.changePct)}">${fP(d.changePct)}</span>`;
+      }
+      // 수익률 셀
+      const plpEl = document.getElementById("usplp_" + sid);
+      if (plpEl) {
+        plpEl.style.color = pc(h.plp);
+        plpEl.textContent = fP(h.plp);
+      }
+      // 평가금 셀
+      const valEl = document.getElementById("usval_" + sid);
+      if (valEl) {
+        valEl.innerHTML = `<div style="font-weight:700;font-size:12px;color:var(--txt2)">${fU(Math.round(h.val))}</div><div style="font-size:10px;color:${pc(h.pl)}">${h.pl >= 0 ? "+" : ""}${fU(Math.round(h.pl))}</div>`;
       }
     }
 
@@ -799,6 +859,12 @@ function _updateUSTableRS() {
     }
   });
 
+  // 포트폴리오 합계 재계산
+  _recalcTotals();
+
+  // 탭별 요약 카드 업데이트
+  _updateTabSummary();
+
   // US 리스크 상태 표시
   const statusEl = document.getElementById("usRiskStatus_" + activeTab);
   if (statusEl) {
@@ -808,6 +874,54 @@ function _updateUSTableRS() {
     } else if (st.lastUp) {
       const hasRisk = items.some(h => RS_US.data[h.ticker]?.risks?.length > 0);
       statusEl.innerHTML = `<span style="color:${hasRisk ? "var(--red)" : "var(--green)"}">${hasRisk ? "⚠ 리스크 감지" : "✓ 정상"}</span> · ${st.lastUp.toLocaleTimeString("ko-KR")}`;
+    }
+  }
+}
+
+/** 포트폴리오 합계 재계산 (실시간 가격 반영) */
+function _recalcTotals() {
+  const sum = (a, k) => a.reduce((s, h) => s + (h[k] || 0), 0);
+  P.idxT = { inv: sum(P.index, "inv"), val: sum(P.index, "val") };
+  P.divT = { inv: sum(P.dividend, "inv"), val: sum(P.dividend, "val") };
+  P.groT = { inv: sum(P.growth, "inv"), val: sum(P.growth, "val") };
+  P.krT = { inv: sum(P.kr, "inv"), val: sum(P.kr, "val") };
+  P.usdAll = P.idxT.val + P.divT.val + P.groT.val;
+  P.cashUsd = P.cash.rp + P.cash.usd;
+  P.cashKrw = P.cash.krw || 0;
+  P.cashAll = P.cashUsd;
+  P.grand = P.usdAll + P.krT.val / P.rate + P.cashUsd + P.cashKrw / P.rate;
+
+  // TotalBoard 갱신
+  const rp = t => t.inv > 0 ? ((t.val - t.inv) / t.inv * 100) : 0;
+  P.tb = {
+    "지수형": { inv: P.idxT.inv, val: P.idxT.val, plp: rp(P.idxT) },
+    "배당":   { inv: P.divT.inv, val: P.divT.val, plp: rp(P.divT) },
+    "성장":   { inv: P.groT.inv, val: P.groT.val, plp: rp(P.groT) },
+    "Total":  { inv: P.idxT.inv + P.divT.inv + P.groT.inv, val: P.usdAll, plp: rp({ inv: P.idxT.inv + P.divT.inv + P.groT.inv, val: P.usdAll }) },
+    "국내":   { inv: P.krT.inv, val: P.krT.val, plp: rp(P.krT) },
+  };
+
+  // 그랜드 토탈 업데이트
+  const gtEl = document.getElementById("grandTotal");
+  if (gtEl) gtEl.textContent = fU(Math.round(P.grand));
+}
+
+/** 탭별 요약 카드 실시간 업데이트 */
+function _updateTabSummary() {
+  const tabTotals = { index: P.idxT, dividend: P.divT, growth: P.groT };
+  const t = tabTotals[activeTab];
+  if (!t) return;
+
+  // "평가금액" 카드 내 .big 요소 (각 탭 렌더러에서 생성된 사이드카드)
+  const sideCards = document.querySelectorAll(".side-cards .card");
+  if (sideCards.length > 0) {
+    const plp = t.inv > 0 ? ((t.val - t.inv) / t.inv * 100) : 0;
+    const bigEl = sideCards[0].querySelector(".big");
+    const midEl = sideCards[0].querySelector(".mid");
+    if (bigEl) bigEl.textContent = fU(Math.round(t.val));
+    if (midEl) {
+      midEl.style.color = pc(plp);
+      midEl.textContent = fP(plp);
     }
   }
 }
