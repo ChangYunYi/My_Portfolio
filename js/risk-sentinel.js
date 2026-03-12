@@ -399,7 +399,7 @@ function rsPatternDetect(closes) {
 }
 
 /** 리스크 신호 감지 (확장) */
-function rsFindRisks(pr, prevClose, ind) {
+function rsFindRisks(pr, prevClose, ind, investor) {
   const R = [];
   if (!pr || !ind) return R;
 
@@ -486,6 +486,16 @@ function rsFindRisks(pr, prevClose, ind) {
     ind.patterns.forEach(p => R.push(p));
   }
 
+  // ── 투자자 동향 (KIS, KR only) ──
+  if (investor) {
+    // 외인+기관 동반 대규모 매도 (하락 시)
+    if (investor.frgn < -10000 && investor.orgn < -10000 && prevClose > 0 && pr < prevClose) {
+      R.push({ type: "INV_SELL", sev: "critical", msg: "외인·기관 동반 순매도 (하락중)" });
+    } else if (investor.frgn < -50000) {
+      R.push({ type: "FRGN_SELL", sev: "high", msg: "외국인 대규모 순매도 (" + (investor.frgn / 1000).toFixed(0) + "K주)" });
+    }
+  }
+
   return R;
 }
 
@@ -522,7 +532,7 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   const fetchTicker = isKR ? rsKRTicker(portTicker) : portTicker;
   const kisAvail = isKR && typeof KIS !== "undefined" && KIS.isReady();
 
-  // quote + candle 병렬 요청
+  // quote + candle + (KR: 분봉 + 투자자) 병렬 요청
   const quoteP = (async () => {
     if (isKR) {
       let q;
@@ -559,7 +569,23 @@ async function rsProcessOne(mkt, portTicker, isKR) {
     return uc;
   })();
 
-  const [q, candleResult] = await Promise.all([quoteP, candleP]);
+  // KR: 분봉 (KIS 우선, 폴백: Yahoo intraday)
+  const intradayP = (async () => {
+    if (!isKR) return null;
+    if (kisAvail) {
+      const mc = await KIS.getMinuteChart(portTicker);
+      if (mc?.length > 3) return mc;
+    }
+    return null; // Yahoo intraday는 quote에서 이미 포함됨
+  })();
+
+  // KR: 투자자별 매매동향 (KIS)
+  const investorP = (async () => {
+    if (!isKR || !kisAvail) return null;
+    return KIS.getInvestorTrend(portTicker);
+  })();
+
+  const [q, candleResult, intradayData, investorData] = await Promise.all([quoteP, candleP, intradayP, investorP]);
 
   if (!q || !(q.c > 0)) {
     console.warn("[RS] " + portTicker + " 시세 조회 실패 ✗");
@@ -584,12 +610,20 @@ async function rsProcessOne(mkt, portTicker, isKR) {
       }
     : { ma50: null, ma100: null, ma200: null, ma300: null, rsi: null, bb: null, macd: null, stoch: null, obv: null, volMA: null, cross: null, patterns: [] };
 
+  // KR intraday: KIS 분봉 우선, Yahoo intraday 폴백
+  const finalIntraday = (isKR && intradayData?.length > 3) ? intradayData
+    : (isKR && q.intraday?.length > 2) ? q.intraday : null;
+
   store.data[portTicker] = {
     loading: false, loaded: true, loadedAt: Date.now(),
     price: pr, prevClose, changePct: prevClose > 0 ? ((pr - prevClose) / prevClose) * 100 : 0,
-    closes: hasC ? cl.slice(-252) : null,  // 차트용 최근 1년만 보존 (메모리 절약, ohlcv 미저장)
-    intraday: (isKR && q.intraday?.length > 2) ? q.intraday : null,
-    ind, risks: rsFindRisks(pr, prevClose, ind)
+    closes: hasC ? cl.slice(-252) : null,
+    intraday: finalIntraday,
+    // KIS 추가 데이터 (KR only)
+    per: q.per || 0, pbr: q.pbr || 0, eps: q.eps || 0,
+    mktCap: q.mktCap || 0, w52h: q.w52h || 0, w52l: q.w52l || 0,
+    investor: investorData,
+    ind, risks: rsFindRisks(pr, prevClose, ind, investorData)
   };
   store.status.loaded++;
   rsDbPut(dbStore, portTicker, store.data[portTicker]);
@@ -956,7 +990,9 @@ function rsShowDetail(ticker, isKR) {
     BEAR_ZONE: "50일선이 200일선 아래에 위치한 약세 구간으로, 하락 추세가 지속 중입니다.",
     DOUBLE_TOP: "비슷한 고점이 두 번 형성된 패턴으로, 저항 돌파 실패 시 하락 전환 가능성이 높습니다.",
     HEAD_SHOULDERS: "세 개의 봉우리 중 가운데가 가장 높은 강력한 하락 반전 패턴입니다.",
-    GAP_DOWN: "전일 대비 큰 폭의 갭 하락이 발생했습니다. 악재 반영 또는 수급 붕괴 신호일 수 있습니다."
+    GAP_DOWN: "전일 대비 큰 폭의 갭 하락이 발생했습니다. 악재 반영 또는 수급 붕괴 신호일 수 있습니다.",
+    INV_SELL: "외국인과 기관이 동시에 대규모 순매도 중이며 주가도 하락하고 있습니다. 수급 악화로 추가 하락 가능성에 유의하세요.",
+    FRGN_SELL: "외국인이 대규모로 순매도 중입니다. 외국인 매도세가 지속될 경우 주가 하방 압력이 커질 수 있습니다."
   };
 
   const riskRows = (d?.risks || []).map((r, idx) => {
@@ -1049,6 +1085,22 @@ function rsShowDetail(ticker, isKR) {
           ${indCell("BB(252)", portItem.bb252 || null, "var(--txt2)")}
         </div>
       </div>
+
+      ${isKR && (d?.per || d?.pbr || d?.mktCap || d?.investor) ? `
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:800;color:var(--mute);letter-spacing:.5px;margin-bottom:8px">KIS 펀더멘탈 / 수급</div>
+        <div class="rs-ind-grid">
+          ${indCell("PER", d.per > 0 ? d.per.toFixed(1) : null, d.per > 30 ? "#ef4444" : d.per > 0 ? "var(--txt2)" : "var(--mute)")}
+          ${indCell("PBR", d.pbr > 0 ? d.pbr.toFixed(2) : null, d.pbr > 3 ? "#ef4444" : d.pbr > 0 ? "var(--txt2)" : "var(--mute)")}
+          ${indCell("EPS", d.eps ? priceFmt(d.eps) : null, d.eps > 0 ? "var(--green)" : d.eps < 0 ? "var(--red)" : "var(--txt2)")}
+          ${indCell("시가총액", d.mktCap > 0 ? (d.mktCap >= 10000 ? (d.mktCap / 10000).toFixed(1) + "조" : d.mktCap.toLocaleString("ko-KR") + "억") : null, "var(--txt2)")}
+          ${indCell("52주고", d.w52h > 0 ? priceFmt(d.w52h) : null, price >= d.w52h * 0.95 ? "#ef4444" : "var(--txt2)")}
+          ${indCell("52주저", d.w52l > 0 ? priceFmt(d.w52l) : null, price <= d.w52l * 1.05 ? "var(--green)" : "var(--txt2)")}
+          ${d?.investor ? indCell("외국인", d.investor.frgn != null ? (d.investor.frgn >= 0 ? "+" : "") + d.investor.frgn.toLocaleString("ko-KR") + "주" : null, d.investor.frgn >= 0 ? "var(--green)" : "var(--red)") : indCell("외국인", null)}
+          ${d?.investor ? indCell("기관", d.investor.orgn != null ? (d.investor.orgn >= 0 ? "+" : "") + d.investor.orgn.toLocaleString("ko-KR") + "주" : null, d.investor.orgn >= 0 ? "var(--green)" : "var(--red)") : indCell("기관", null)}
+          ${d?.investor ? indCell("개인", d.investor.prsn != null ? (d.investor.prsn >= 0 ? "+" : "") + d.investor.prsn.toLocaleString("ko-KR") + "주" : null, d.investor.prsn >= 0 ? "var(--green)" : "var(--red)") : indCell("개인", null)}
+        </div>
+      </div>` : ""}
 
       ${portItem.qty ? `
       <div>
