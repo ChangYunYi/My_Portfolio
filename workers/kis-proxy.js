@@ -4,17 +4,22 @@
  * 배포 방법 (5분 소요):
  * ──────────────────────────────────────────────
  * 1. https://dash.cloudflare.com 접속 → 회원가입/로그인
- * 2. 왼쪽 메뉴 → "Workers & Pages" → "Create" 클릭
- * 3. "Create Worker" 선택 → 이름 입력 (예: kis-proxy)
- * 4. "Deploy" 클릭 후 "Edit code" 클릭
- * 5. 기본 코드 삭제 후, 이 파일 내용 전체 복사+붙여넣기
- * 6. 상단 "Settings" → "Variables and Secrets" 에서:
- *    - KIS_APP_KEY: 발급받은 앱키
- *    - KIS_APP_SECRET: 발급받은 앱시크릿
- *    (⚠ "Encrypt" 체크하여 암호화 저장)
- * 7. "Save and Deploy" 클릭
- * 8. Worker URL 복사 (예: https://kis-proxy.yourname.workers.dev)
- * 9. config.js의 KIS_PROXY_URL에 해당 URL 입력
+ * 2. 왼쪽 사이드바 → "Compute (Workers)" → "Workers & Pages"
+ * 3. "Create" 버튼 클릭
+ * 4. "Start with Hello World!" 옆 "Get started" 클릭
+ * 5. Worker 이름 입력 (예: kis-proxy) → "Deploy" 클릭
+ * 6. "Edit code" 클릭 → 에디터에서 기본 코드 전체 삭제
+ * 7. 이 파일(kis-proxy.js) 내용 전체 복사+붙여넣기
+ * 8. 오른쪽 상단 "Deploy" 클릭
+ * 9. 뒤로 나가서 Worker 상세 페이지 → "Settings" 탭
+ * 10. "Variables and Secrets" 에서 "Add" 클릭:
+ *     - Type: "Secret" 선택
+ *     - Variable name: KIS_APP_KEY  / Value: 발급받은 앱키
+ *     - "Add" 한 번 더 클릭
+ *     - Variable name: KIS_APP_SECRET / Value: 발급받은 앱시크릿
+ *     → "Deploy" 클릭
+ * 11. Worker URL 복사 (예: https://kis-proxy.yourname.workers.dev)
+ * 12. config.js의 KIS_PROXY_URL에 해당 URL 입력
  *
  * ⚡ 이 방식의 장점:
  *    - API 키가 Worker에만 저장됨 (브라우저 노출 없음!)
