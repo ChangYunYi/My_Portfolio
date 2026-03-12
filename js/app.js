@@ -1,7 +1,12 @@
 /* ═══════════════════════════════════════════════════════
    app.js — 메인 대시보드 애플리케이션
-   데이터: holdings.json(정적) + market.json(GitHub Actions)
-         + Finnhub(실시간, risk-sentinel.js)
+
+   데이터 소스:
+     정적 (GitHub Actions):
+       • holdings.json — 보유수량/평단가 (하루 1회, Google Sheets 동기화)
+       • market.json   — 시세/기술지표 (30분, FMP+Yahoo)
+     실시간 (브라우저):
+       • risk-sentinel.js — Finnhub(US) + KIS(KR) + Yahoo(폴백)
 
    의존: config.js, utils.js, treemap.js, risk-sentinel.js
    ═══════════════════════════════════════════════════════ */

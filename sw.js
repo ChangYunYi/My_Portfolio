@@ -1,4 +1,4 @@
-const CACHE_NAME = 'portfolio-v12';
+const CACHE_NAME = 'portfolio-v13';
 const MAX_CACHE_ITEMS = 20; // 캐시 항목 수 제한
 const ASSETS = [
   './index.html',
@@ -12,7 +12,6 @@ const ASSETS = [
   './js/kis-api.js',
   './js/risk-sentinel.js',
   './js/stock-detail.js',
-  './data/sheets.json'
 ];
 
 // 설치: 앱 셸 캐시
@@ -53,7 +52,8 @@ self.addEventListener('fetch', e => {
       url.includes('allorigins.win') ||
       url.includes('corsproxy.io') ||
       url.includes('finnhub.io') ||
-      url.includes('api.stlouisfed.org')) return;
+      url.includes('api.stlouisfed.org') ||
+      url.includes('workers.dev')) return;
 
   // 같은 오리진(앱 셸)만 캐시
   if (!url.startsWith(self.location.origin)) return;
