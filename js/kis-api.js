@@ -204,6 +204,16 @@ const KIS = (() => {
         pc: prevClose || 0,
         h: high || price,
         l: low || price,
+        // 추가 지표 (inquire-price 응답에 포함)
+        per: parseFloat(o.per) || 0,
+        pbr: parseFloat(o.pbr) || 0,
+        eps: parseFloat(o.eps) || 0,
+        bps: parseFloat(o.bps) || 0,
+        mktCap: parseFloat(o.hts_avls) || 0,       // 시가총액 (억원)
+        vol: parseInt(o.acml_vol) || 0,              // 누적 거래량
+        volAmt: parseFloat(o.acml_tr_pbmn) || 0,    // 누적 거래대금
+        w52h: parseFloat(o.stck_dryy_hgpr) || 0,    // 52주 최고
+        w52l: parseFloat(o.stck_dryy_lwpr) || 0,    // 52주 최저
         _source: "kis",
       };
     } catch (e) {
@@ -316,6 +326,132 @@ const KIS = (() => {
   }
 
 
+  /* ── 분봉 차트 조회 (당일 30분봉) ── */
+
+  async function getMinuteChart(portfolioTicker) {
+    if (!isReady()) return null;
+
+    const code = toKISCode(portfolioTicker);
+    if (!code) return null;
+
+    try {
+      const token = await getToken();
+
+      // 현재 시각 기준 HHMMSS (장 시작부터 현재까지)
+      const now = new Date();
+      const kst = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60000);
+      const endTime = String(kst.getHours()).padStart(2, "0") +
+                       String(kst.getMinutes()).padStart(2, "0") + "00";
+
+      const params = new URLSearchParams({
+        FID_ETC_CLS_CODE: "",
+        FID_COND_MRKT_DIV_CODE: "J",
+        FID_INPUT_ISCD: code,
+        FID_INPUT_HOUR_1: endTime,
+        FID_PW_DATA_INCU_YN: "N",
+      });
+
+      const headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "authorization": "Bearer " + token,
+        "tr_id": "FHKST03010200",
+      };
+      if (_hasLocalKeys()) {
+        headers["appkey"] = KIS_APP_KEY;
+        headers["appsecret"] = KIS_APP_SECRET;
+      }
+
+      const r = await fetch(_url("/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice?" + params), {
+        headers,
+        signal: _sig(8000),
+      });
+
+      if (!r.ok) { r.body?.cancel?.().catch(() => {}); return null; }
+      const d = await r.json();
+      if (d.rt_cd !== "0") return null;
+
+      const rows = d.output2;
+      if (!rows || rows.length < 3) return null;
+
+      // 시간 오름차순 정렬 후 종가만 추출
+      const sorted = rows
+        .filter(row => parseFloat(row.stck_prpr) > 0)
+        .reverse();
+
+      const closes = sorted.map(row => parseFloat(row.stck_prpr));
+
+      if (closes.length < 3) return null;
+      _failCount = 0;
+      console.log("[KIS] 분봉 " + portfolioTicker + ": " + closes.length + "건");
+      return closes;
+    } catch (e) {
+      console.warn("[KIS] 분봉 " + portfolioTicker + ": " + e.message);
+      return null;
+    }
+  }
+
+
+  /* ── 투자자별 매매동향 조회 ── */
+
+  async function getInvestorTrend(portfolioTicker) {
+    if (!isReady()) return null;
+
+    const code = toKISCode(portfolioTicker);
+    if (!code) return null;
+
+    try {
+      const token = await getToken();
+
+      const params = new URLSearchParams({
+        FID_COND_MRKT_DIV_CODE: "J",
+        FID_INPUT_ISCD: code,
+      });
+
+      const headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "authorization": "Bearer " + token,
+        "tr_id": "FHKST01010900",
+      };
+      if (_hasLocalKeys()) {
+        headers["appkey"] = KIS_APP_KEY;
+        headers["appsecret"] = KIS_APP_SECRET;
+      }
+
+      const r = await fetch(_url("/uapi/domestic-stock/v1/quotations/inquire-investor?" + params), {
+        headers,
+        signal: _sig(8000),
+      });
+
+      if (!r.ok) { r.body?.cancel?.().catch(() => {}); return null; }
+      const d = await r.json();
+      if (d.rt_cd !== "0") return null;
+
+      const rows = d.output;
+      if (!rows || rows.length === 0) return null;
+
+      // output은 투자자 구분별 데이터 배열
+      // 각 row: prsn_ntby_qty(개인 순매수), frgn_ntby_qty(외국인 순매수),
+      //         orgn_ntby_qty(기관 순매수) 등
+      const today = rows[0]; // 최근(당일) 데이터
+      const result = {
+        frgn: parseInt(today.frgn_ntby_qty) || 0,   // 외국인 순매수 수량
+        orgn: parseInt(today.orgn_ntby_qty) || 0,   // 기관 순매수 수량
+        prsn: parseInt(today.prsn_ntby_qty) || 0,   // 개인 순매수 수량
+      };
+
+      _failCount = 0;
+      const frgnDir = result.frgn >= 0 ? "+" : "";
+      const orgnDir = result.orgn >= 0 ? "+" : "";
+      console.log("[KIS] 투자자 " + portfolioTicker + ": 외인" + frgnDir + result.frgn.toLocaleString("ko-KR") +
+        " 기관" + orgnDir + result.orgn.toLocaleString("ko-KR"));
+      return result;
+    } catch (e) {
+      console.warn("[KIS] 투자자 " + portfolioTicker + ": " + e.message);
+      return null;
+    }
+  }
+
+
   /* ── 토큰 초기화 ── */
 
   function clearToken() {
@@ -340,6 +476,6 @@ const KIS = (() => {
   }
 
 
-  return { isReady, getQuote, getDailyChart, clearToken, status };
+  return { isReady, getQuote, getDailyChart, getMinuteChart, getInvestorTrend, clearToken, status };
 
 })();
