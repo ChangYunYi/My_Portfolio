@@ -688,12 +688,14 @@ function _updateKRTableRS() {
     const dailyEl = document.getElementById("krdaily_" + sid);
     if (!sparkEl) return;
 
-    // 스파크라인 (당일 5분봉 장중 차트)
-    const sparkData = d?.intraday?.length > 2 ? d.intraday : null;
+    // 스파크라인: 장중 5분봉 우선, 없으면 일봉(closes) 폴백
+    const sparkData = d?.intraday?.length > 2 ? d.intraday : (d?.closes?.length > 2 ? d.closes.slice(-40) : null);
     if (sparkData) {
       sparkEl.innerHTML = mkSparkSVG(sparkData, 80, 26);
     } else if (d?.loading) {
       sparkEl.innerHTML = '<div class="kr-spark-placeholder"></div>';
+    } else if (d?.loaded) {
+      sparkEl.innerHTML = '<span style="font-size:8px;color:var(--mute)">—</span>';
     } else if (d?.error) {
       sparkEl.innerHTML = '<span style="font-size:8px;color:var(--mute)">—</span>';
     }
