@@ -639,9 +639,6 @@ async function _rsLoadAll(opts) {
   } finally { _rsSeqRunning = false; }
 }
 
-// 하위호환
-async function _rsLoadSequential() { return _rsLoadAll(); }
-
 
 /* ═══════════════════════════════════════════════════════
    엔진 시작
@@ -809,18 +806,6 @@ function mkSparkSVG(closes, w, h) {
   return `<svg width="${w}" height="${h}" style="display:block"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${c}" stop-opacity=".15"/><stop offset="100%" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><path d="${pts} L${w},${h} L0,${h} Z" fill="url(#${gid})"/><path d="${pts}" fill="none" stroke="${c}" stroke-width="1.6"/><circle cx="${X(d.length - 1)}" cy="${Y(d[d.length - 1])}" r="2.5" fill="${c}"/></svg>`;
 }
 
-
-/* ═══════════════════════════════════════════════════════
-   UI — 리스크 배지 HTML
-   ═══════════════════════════════════════════════════════ */
-
-function mkRiskBadgesHTML(risks) {
-  if (!risks?.length) return '';
-  const cls = { critical: "rs-crit", high: "rs-high", medium: "rs-med" };
-  return risks.slice(0, 2).map(r =>
-    `<span class="rs-badge ${cls[r.sev] || 'rs-med'}">${r.msg.length > 13 ? r.msg.slice(0, 13) + "…" : r.msg}</span>`
-  ).join("") + (risks.length > 2 ? `<span style="font-size:7px;color:var(--mute)"> +${risks.length - 2}</span>` : "");
-}
 
 
 /* ═══════════════════════════════════════════════════════
