@@ -771,14 +771,10 @@ async function startRSSentinel() {
       rsLoadVIX();
       _rsLoadAll();
     } else {
-      // 장외: 캐시만 사용
-      console.log("[RS] 장외 모드 — 캐시 사용 (US: " + restoredUS + "건, KR: " + restoredKR + "건)");
-      // 캐시 없는 시장만 최초 1회 fetch
-      if (restoredUS === 0 || restoredKR === 0) {
-        console.log("[RS] 캐시 부족 — 초기 로드 (US:" + (restoredUS === 0 ? "Y" : "N") + ", KR:" + (restoredKR === 0 ? "Y" : "N") + ")");
-        rsLoadVIX();
-        _rsLoadAll({ forceUS: restoredUS === 0, forceKR: restoredKR === 0 });
-      }
+      // 장외: 첫 방문 시 항상 최신 데이터 1회 fetch (캐시 유무 무관)
+      console.log("[RS] 장외 모드 — 초기 로드 (캐시 US: " + restoredUS + "건, KR: " + restoredKR + "건)");
+      rsLoadVIX();
+      _rsLoadAll({ forceUS: true, forceKR: true });
     }
   }
 
