@@ -1,4 +1,4 @@
-name: Fetch US Market Data (FMP + Yahoo)
+name: Fetch Market Data (US + KR)
 
 on:
   schedule:

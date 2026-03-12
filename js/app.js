@@ -663,8 +663,8 @@ function _mkKRTable(items) {
         </td>
         <td class="mono" id="krprice_${sid}"><div class="kr-cur">${cur}</div><div style="font-size:10px;color:var(--mute)">${h.avg.toLocaleString()}</div></td>
         <td id="krdaily_${sid}"><span class="${bc(h.daily)}">${fP(h.daily)}</span></td>
-        <td id="${prefix}plp_${sid}" style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
-        <td id="${prefix}val_${sid}"><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
+        <td id="krplp_${sid}" style="color:${pc(h.plp)};font-weight:800;font-size:13px">${fP(h.plp)}</td>
+        <td id="krval_${sid}"><div style="font-weight:700;font-size:12px;color:var(--txt2)">${val}</div><div style="font-size:10px;color:${pc(h.pl)}">${plS}</div></td>
         <td><span style="color:${h.divY >= 3 ? "var(--green)" : h.divY >= 1 ? "var(--amber)" : "var(--sub)"};font-weight:700;font-size:12px">${h.divY.toFixed(2)}%</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb20)};font-weight:700;font-size:12px">${h.bb20 || "-"}</span></td>
         <td style="text-align:center"><span style="color:${sigC(h.bb252)};font-weight:700;font-size:12px">${h.bb252 || "-"}</span></td>
