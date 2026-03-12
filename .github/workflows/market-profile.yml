@@ -1,13 +1,9 @@
-name: Fetch US Market Data (FMP + Yahoo)
+name: Fetch US Market Profile (FMP fundamentals)
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # 30분마다: quote (시세 + 기술지표)
+    - cron: "0 0,12 * * *"   # 하루 2회: 00:00, 12:00 UTC
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "quote or profile"
-        default: "quote"
 
 permissions:
   contents: write
@@ -22,10 +18,10 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Fetch market data (quote)
+      - name: Fetch profile data
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-        run: node scripts/fetch-market.js ${{ github.event.inputs.mode || 'quote' }}
+        run: node scripts/fetch-market.js profile
 
       - name: Commit & push if changed
         run: |
@@ -35,6 +31,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore: update market data $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git commit -m "chore: update market profile $(date -u +'%Y-%m-%d %H:%M UTC')"
             git push
           fi

@@ -1,18 +1,20 @@
 /**
  * US 시장 데이터 수집 스크립트
- * GitHub Actions에서 10분마다 실행 → data/market.json 갱신
+ * GitHub Actions에서 30분마다 실행 → data/market.json 갱신
  *
- * 데이터 소스:
- *   - FMP (Financial Modeling Prep): 펀더멘탈 (PER, PBR, 배당률, 시가총액 등)
- *   - Yahoo Finance v8 chart: 현재가, 일변동, 60일 히스토리
+ * 모드:
+ *   - "quote"   (기본): FMP quote + Yahoo chart (30분마다)
+ *   - "profile": FMP profile 펀더멘탈 보충 (하루 2회, 0시/12시 UTC)
  *
- * 기술지표 (히스토리 기반 서버 계산):
- *   - RSI(14), BB%(20), BB%(252), MDD
+ * 사용법:
+ *   node scripts/fetch-market.js           # quote 모드
+ *   node scripts/fetch-market.js profile   # profile 모드
  */
 const fs = require("fs");
 const path = require("path");
 
 const FMP_KEY = process.env.FMP_API_KEY || "nJmHhWv6XOVTWKGGoLNpiTh0JYUCtbjr";
+const MODE = process.argv[2] || "quote";
 
 // ── holdings.json에서 US 티커 추출 ──
 function loadTickers() {
@@ -185,24 +187,33 @@ function calcMDD(prices) {
   return +maxDD.toFixed(2);
 }
 
-// ── 메인 ──
-async function main() {
-  const tickers = loadTickers();
-  console.log(`Fetching market data for ${tickers.length} US tickers: ${tickers.join(", ")}`);
-
-  // 기존 market.json 로드 (프로필 데이터 캐시용)
+// ── 공통: 기존 market.json 로드 ──
+function loadExisting() {
   const outPath = path.join(__dirname, "..", "data", "market.json");
-  let existing = {};
   try {
-    const old = JSON.parse(fs.readFileSync(outPath, "utf8"));
-    existing = old.tickers || {};
-  } catch {}
+    return JSON.parse(fs.readFileSync(outPath, "utf8"));
+  } catch { return { tickers: {} }; }
+}
 
-  // FMP 배치 호출 (quote + profile)
-  const [fmpQuotes, fmpProfiles] = await Promise.all([
-    fetchFmpQuotes(tickers),
-    fetchFmpProfiles(tickers),
-  ]);
+function saveResult(out) {
+  const outPath = path.join(__dirname, "..", "data", "market.json");
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, JSON.stringify(out));
+  console.log(`\nSaved to ${outPath}`);
+  console.log(`Updated: ${out.updated}`);
+  console.log(`Tickers: ${Object.keys(out.tickers).length}`);
+}
+
+// ── quote 모드: FMP quote + Yahoo chart (30분마다) ──
+async function runQuote() {
+  const tickers = loadTickers();
+  console.log(`[quote] ${tickers.length} US tickers: ${tickers.join(", ")}`);
+
+  const old = loadExisting();
+  const existing = old.tickers || {};
+
+  // FMP batch quote (1 API call)
+  const fmpQuotes = await fetchFmpQuotes(tickers);
 
   // Yahoo 히스토리 (순차, 레이트리밋 방지)
   const yahooData = {};
@@ -211,77 +222,95 @@ async function main() {
     if (yahooData[ticker]) {
       console.log(`  [Yahoo] ${ticker}: ${yahooData[ticker].history.length} days`);
     }
-    // Yahoo 레이트리밋 방지
     await new Promise(ok => setTimeout(ok, 300));
   }
 
-  // 데이터 병합
+  // 데이터 병합 (profile 필드는 기존 값 유지)
   const result = {};
   for (const ticker of tickers) {
     const fq = fmpQuotes[ticker] || {};
-    const fp = fmpProfiles[ticker] || {};
     const yh = yahooData[ticker] || {};
-    const old = existing[ticker] || {};
+    const prev = existing[ticker] || {};
 
-    // 가격: FMP quote > Yahoo > 기존
-    const price = fq.price || yh.price || old.price || 0;
-    const prevClose = fq.prevClose || yh.prevClose || old.prevClose || 0;
+    const price = fq.price || yh.price || prev.price || 0;
+    const prevClose = fq.prevClose || yh.prevClose || prev.prevClose || 0;
 
-    // 히스토리: Yahoo (최근 60일만 저장하여 용량 절약)
-    const fullHistory = yh.history || old.history || [];
+    const fullHistory = yh.history || prev.history || [];
     const history = fullHistory.slice(-60);
     const allCloses = fullHistory.map(h => h.p);
 
-    // 기술지표 계산 (전체 히스토리 기반)
     const rsi = calcRSI(allCloses);
     const bb20 = calcBBPct(allCloses, 20);
     const bb252 = calcBBPct(allCloses, 252);
     const mdd = calcMDD(allCloses);
 
-    // 일변동
     const changePct = fq.changePct || (prevClose > 0 ? +((price - prevClose) / prevClose * 100).toFixed(2) : 0);
 
     result[ticker] = {
-      price,
-      prevClose,
+      price, prevClose,
       change: fq.change || +(price - prevClose).toFixed(4),
       changePct,
       dayHigh: fq.dayHigh || null,
       dayLow: fq.dayLow || null,
       volume: fq.volume || null,
-      // 펀더멘탈
-      per: fq.per || old.per || null,
-      eps: fq.eps || old.eps || null,
-      pbr: fp.pbr || old.pbr || null,
-      divYield: fp.divYield || old.divYield || 0,
-      marketCap: fq.marketCap || old.marketCap || null,
-      sector: fp.sector || old.sector || null,
-      beta: fp.beta || old.beta || null,
-      isETF: fp.isETF || old.isETF || false,
+      // 펀더멘탈: quote에서 얻을 수 있는 것 + 기존 profile 유지
+      per: fq.per || prev.per || null,
+      eps: fq.eps || prev.eps || null,
+      pbr: prev.pbr || null,
+      divYield: prev.divYield || 0,
+      marketCap: fq.marketCap || prev.marketCap || null,
+      sector: prev.sector || null,
+      beta: prev.beta || null,
+      isETF: prev.isETF || false,
       // 기술지표
-      rsi,
-      bb20,
-      bb252,
-      mdd,
-      // 히스토리 (최근 60일)
+      rsi, bb20, bb252, mdd,
+      // 히스토리
       history,
     };
   }
 
-  const out = {
-    updated: new Date().toISOString(),
-    tickers: result,
-  };
-
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(out));
-  console.log(`\nSaved to ${outPath}`);
-  console.log(`Updated: ${out.updated}`);
-  console.log(`Tickers: ${Object.keys(result).length}`);
+  saveResult({ updated: new Date().toISOString(), tickers: result });
 
   const ok = Object.values(result).filter(t => t.price > 0).length;
   console.log(`With price data: ${ok}/${tickers.length}`);
   if (ok === 0) { console.error("No price data fetched!"); process.exit(1); }
 }
 
-main();
+// ── profile 모드: FMP profile 펀더멘탈 보충 (하루 2회) ──
+async function runProfile() {
+  const tickers = loadTickers();
+  console.log(`[profile] ${tickers.length} US tickers: ${tickers.join(", ")}`);
+
+  const old = loadExisting();
+  const existing = old.tickers || {};
+
+  // FMP batch profile (1 API call)
+  const fmpProfiles = await fetchFmpProfiles(tickers);
+
+  // 기존 데이터에 profile 필드만 덮어쓰기
+  const result = {};
+  for (const ticker of tickers) {
+    const fp = fmpProfiles[ticker] || {};
+    const prev = existing[ticker] || {};
+
+    result[ticker] = {
+      ...prev,
+      pbr: fp.pbr || prev.pbr || null,
+      divYield: fp.divYield || prev.divYield || 0,
+      sector: fp.sector || prev.sector || null,
+      beta: fp.beta || prev.beta || null,
+      isETF: fp.isETF || prev.isETF || false,
+    };
+  }
+
+  saveResult({ updated: old.updated || new Date().toISOString(), profileUpdated: new Date().toISOString(), tickers: result });
+  console.log(`Profile updated for ${Object.keys(fmpProfiles).length} tickers`);
+}
+
+// ── 실행 ──
+console.log(`Mode: ${MODE}`);
+if (MODE === "profile") {
+  runProfile();
+} else {
+  runQuote();
+}
