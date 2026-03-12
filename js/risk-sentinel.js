@@ -505,8 +505,20 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   const dbStore = isKR ? "rsKR" : "rsUS";
   store.data[portTicker] = { ...(store.data[portTicker] || {}), loading: true };
 
-  const fetchTicker = isKR ? rsKRTicker(portTicker) : portTicker;
-  const q = isKR ? await rsKRQuote(fetchTicker) : await rsUSQuote(fetchTicker);
+  let q;
+  if (isKR) {
+    // ① KIS API 우선 시도 (실시간 시세)
+    if (typeof KIS !== "undefined" && KIS.isReady()) {
+      q = await KIS.getQuote(portTicker);
+    }
+    // ② KIS 실패 시 Yahoo Finance 폴백
+    if (!q || !(q.c > 0)) {
+      const fetchTicker = rsKRTicker(portTicker);
+      q = await rsKRQuote(fetchTicker);
+    }
+  } else {
+    q = await rsUSQuote(portTicker);
+  }
   await RSW(130);
   const candleResult = isKR ? await rsKRCandles(fetchTicker) : await rsUSCandles(fetchTicker);
   await RSW(130);

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'portfolio-v11';
+const CACHE_NAME = 'portfolio-v12';
 const MAX_CACHE_ITEMS = 20; // 캐시 항목 수 제한
 const ASSETS = [
   './index.html',
@@ -9,6 +9,7 @@ const ASSETS = [
   './js/treemap.js',
   './js/tab-guard.js',
   './js/app.js',
+  './js/kis-api.js',
   './js/risk-sentinel.js',
   './js/stock-detail.js',
   './data/sheets.json'
