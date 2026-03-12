@@ -215,6 +215,107 @@ const KIS = (() => {
   }
 
 
+  /* ── 일봉 차트 조회 (최근 100일) ── */
+
+  async function getDailyChart(portfolioTicker) {
+    if (!isReady()) return null;
+
+    const code = toKISCode(portfolioTicker);
+    if (!code) return null;
+
+    try {
+      const token = await getToken();
+
+      // 종료일: 오늘, 시작일: 2년 전
+      const now = new Date();
+      const endDt = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const start = new Date(now);
+      start.setFullYear(start.getFullYear() - 2);
+      const startDt = start.toISOString().slice(0, 10).replace(/-/g, "");
+
+      const allBars = [];
+      let contKey = "";  // 연속조회 키
+
+      // 최대 5회 페이지네이션 (100건 × 5 = 약 500거래일 ≈ 2년)
+      for (let page = 0; page < 5; page++) {
+        const params = new URLSearchParams({
+          FID_COND_MRKT_DIV_CODE: "J",
+          FID_INPUT_ISCD: code,
+          FID_INPUT_DATE_1: startDt,
+          FID_INPUT_DATE_2: endDt,
+          FID_PERIOD_DIV_CODE: "D",
+          FID_ORG_ADJ_PRC: "0",  // 수정주가
+        });
+
+        const headers = {
+          "Content-Type": "application/json; charset=utf-8",
+          "authorization": "Bearer " + token,
+          "tr_id": "FHKST03010100",
+        };
+        if (_hasLocalKeys()) {
+          headers["appkey"] = KIS_APP_KEY;
+          headers["appsecret"] = KIS_APP_SECRET;
+        }
+        if (contKey) {
+          headers["tr_cont"] = "N";
+          params.set("FID_INPUT_DATE_2", contKey);
+        }
+
+        const r = await fetch(_url("/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice?" + params), {
+          headers,
+          signal: _sig(10000),
+        });
+
+        if (!r.ok) { r.body?.cancel?.().catch(() => {}); break; }
+        const d = await r.json();
+        if (d.rt_cd !== "0") break;
+
+        const rows = d.output2;
+        if (!rows || rows.length === 0) break;
+
+        for (const row of rows) {
+          const c = parseFloat(row.stck_clpr);
+          if (!c || c <= 0) continue;
+          allBars.push({
+            dt: row.stck_bsop_date,
+            o: parseFloat(row.stck_oprc) || c,
+            h: parseFloat(row.stck_hgpr) || c,
+            l: parseFloat(row.stck_lwpr) || c,
+            c,
+            v: parseInt(row.acml_vol) || 0,
+          });
+        }
+
+        // 연속조회: 마지막 날짜 - 1일을 종료일로
+        if (rows.length < 100) break;
+        const lastDt = rows[rows.length - 1].stck_bsop_date;
+        if (!lastDt || lastDt <= startDt) break;
+        // 다음 페이지 종료일 = 마지막 날짜 하루 전
+        const ld = new Date(lastDt.slice(0, 4) + "-" + lastDt.slice(4, 6) + "-" + lastDt.slice(6, 8));
+        ld.setDate(ld.getDate() - 1);
+        contKey = ld.toISOString().slice(0, 10).replace(/-/g, "");
+
+        await new Promise(r => setTimeout(r, 100));  // API 부하 방지
+      }
+
+      if (allBars.length < 20) return null;
+
+      // 날짜 오름차순 정렬 (오래된 → 최근)
+      allBars.sort((a, b) => a.dt.localeCompare(b.dt));
+      _failCount = 0;
+
+      return {
+        closes: allBars.map(b => b.c),
+        ohlcv: allBars.map(b => ({ o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })),
+      };
+    } catch (e) {
+      _failCount++;
+      console.warn("[KIS] 일봉 " + portfolioTicker + ": " + e.message);
+      return null;
+    }
+  }
+
+
   /* ── 토큰 초기화 ── */
 
   function clearToken() {
@@ -239,6 +340,6 @@ const KIS = (() => {
   }
 
 
-  return { isReady, getToken, fetchPrice, getQuote, toKISCode, clearToken, status };
+  return { isReady, getToken, fetchPrice, getQuote, getDailyChart, toKISCode, clearToken, status };
 
 })();

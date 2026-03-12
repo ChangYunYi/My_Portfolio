@@ -520,18 +520,30 @@ async function rsProcessOne(mkt, portTicker, isKR) {
   store.data[portTicker] = { ...(store.data[portTicker] || {}), loading: true };
 
   const fetchTicker = isKR ? rsKRTicker(portTicker) : portTicker;
+  const kisAvail = isKR && typeof KIS !== "undefined" && KIS.isReady();
 
   // quote + candle 병렬 요청
   const quoteP = (async () => {
     if (isKR) {
       let q;
-      if (typeof KIS !== "undefined" && KIS.isReady()) q = await KIS.getQuote(portTicker);
+      if (kisAvail) q = await KIS.getQuote(portTicker);
       if (!q || !(q.c > 0)) q = await rsKRQuote(fetchTicker);
       return q;
     }
     return rsUSQuote(portTicker);
   })();
-  const candleP = isKR ? rsKRCandles(fetchTicker) : rsUSCandles(fetchTicker);
+
+  // KR: KIS 일봉 우선, 실패 시 Yahoo 폴백 / US: Yahoo
+  const candleP = (async () => {
+    if (isKR) {
+      if (kisAvail) {
+        const kc = await KIS.getDailyChart(portTicker);
+        if (kc?.closes?.length > 20) return kc;
+      }
+      return rsKRCandles(fetchTicker);
+    }
+    return rsUSCandles(fetchTicker);
+  })();
 
   const [q, candleResult] = await Promise.all([quoteP, candleP]);
 
@@ -591,24 +603,38 @@ async function _rsBatchLoad(stocks, mkt, isKR, batchSize) {
   rsUpdateStatus(mkt);
 }
 
-/** US/KR 병렬 로딩 (장중) */
+/** US/KR 병렬 로딩 — 장시간 기반으로 해당 시장만 fetch
+ *  @param {object} [opts] - { forceUS, forceKR } 캐시 없을 때 강제 로드용 */
 let _rsSeqRunning = false;
-async function _rsLoadAll() {
+async function _rsLoadAll(opts) {
   if (_rsSeqRunning) return;
   _rsSeqRunning = true;
   try {
     const mkt = rsMarketStatus();
+    const forceUS = opts?.forceUS, forceKR = opts?.forceKR;
+    const loadUS = mkt.usOpen || forceUS;
+    const loadKR = mkt.krOpen || forceKR;
+
     const usStocks = [...P.index, ...P.dividend, ...P.growth].filter(h => h.ticker?.trim());
     const krStocks = (P.kr || []).filter(h => h.ticker?.trim());
 
-    // US와 KR 병렬 로드 (각각 내부에서 3개씩 배치 병렬)
+    // 두 시장 병렬, 각 시장 내부는 배치 병렬 (US 3개, KR 2개씩)
     const tasks = [];
-    if (usStocks.length) tasks.push(_rsBatchLoad(usStocks, "us", false, 3).then(() => {
-      if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
-    }));
-    if (krStocks.length) tasks.push(_rsBatchLoad(krStocks, "kr", true, 2).then(() => {
-      if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
-    }));
+    if (loadUS && usStocks.length) {
+      console.log("[RS] US 로드 시작 (" + usStocks.length + "종목)");
+      tasks.push(_rsBatchLoad(usStocks, "us", false, 3).then(() => {
+        if (["index", "dividend", "growth"].includes(activeTab) && typeof _updateUSTableRS === "function") _updateUSTableRS();
+      }));
+    }
+    if (loadKR && krStocks.length) {
+      console.log("[RS] KR 로드 시작 (" + krStocks.length + "종목, KIS: " + (typeof KIS !== "undefined" && KIS.isReady() ? "ON" : "OFF") + ")");
+      tasks.push(_rsBatchLoad(krStocks, "kr", true, 2).then(() => {
+        if (activeTab === "kr" && typeof _updateKRTableRS === "function") _updateKRTableRS();
+      }));
+    }
+    if (tasks.length === 0) {
+      console.log("[RS] 장외 — 두 시장 모두 스킵");
+    }
     await Promise.all(tasks);
   } finally { _rsSeqRunning = false; }
 }
@@ -637,9 +663,9 @@ async function startRSSentinel() {
   if (_rsSentinelStarted) {
     console.log("[RS] 이미 실행중, 데이터만 재로드");
     const isLeader = typeof TabGuard === "undefined" || TabGuard.isLeader;
-    if (isLeader && rsMarketStatus().anyOpen) {
-      rsLoadVIX();
-      _rsLoadAll();
+    if (isLeader) {
+      const ms = rsMarketStatus();
+      if (ms.anyOpen) { rsLoadVIX(); _rsLoadAll(); }
     }
     return;
   }
@@ -686,26 +712,28 @@ async function startRSSentinel() {
 
   const isLeader = typeof TabGuard === "undefined" || TabGuard.isLeader;
 
-  if (mkt.anyOpen && isLeader) {
-    // 장중: 네트워크 fetch 수행
-    console.log("[RS] 장중 모드 — 실시간 데이터 로드" + (mkt.usOpen ? " (US)" : "") + (mkt.krOpen ? " (KR)" : ""));
-    rsLoadVIX();
-    _rsLoadAll();
-  } else if (!mkt.anyOpen) {
-    // 장외: 캐시만 사용, 네트워크 요청 안함
-    console.log("[RS] 장외 모드 — 캐시 데이터 사용 (US: " + restoredUS + "건, KR: " + restoredKR + "건)");
-    // 캐시가 전혀 없으면 한 번만 fetch
-    if (restoredUS === 0 && restoredKR === 0 && isLeader) {
-      console.log("[RS] 캐시 없음 — 최초 1회 로드");
+  if (isLeader) {
+    if (mkt.anyOpen) {
+      // 장중: 열린 시장만 fetch (US/KR 병렬)
+      console.log("[RS] 장중 모드 —" + (mkt.usOpen ? " US장중" : " US장외") + (mkt.krOpen ? " KR장중" : " KR장외"));
       rsLoadVIX();
       _rsLoadAll();
+    } else {
+      // 장외: 캐시만 사용
+      console.log("[RS] 장외 모드 — 캐시 사용 (US: " + restoredUS + "건, KR: " + restoredKR + "건)");
+      // 캐시 없는 시장만 최초 1회 fetch
+      if (restoredUS === 0 || restoredKR === 0) {
+        console.log("[RS] 캐시 부족 — 초기 로드 (US:" + (restoredUS === 0 ? "Y" : "N") + ", KR:" + (restoredKR === 0 ? "Y" : "N") + ")");
+        rsLoadVIX();
+        _rsLoadAll({ forceUS: restoredUS === 0, forceKR: restoredKR === 0 });
+      }
     }
   }
 
-  // VIX 갱신 (장중 5분, 장외 안함)
+  // VIX 갱신 (US 장중일 때만, 5분 간격)
   _rsIntervals.push(setInterval(() => {
     if (typeof TabGuard !== "undefined" && !TabGuard.isLeader) return;
-    if (!rsMarketStatus().anyOpen) return;
+    if (!rsMarketStatus().usOpen) return;
     rsLoadVIX();
   }, 300000));
 
@@ -713,7 +741,7 @@ async function startRSSentinel() {
   function _scheduleRefresh() {
     if (_rsRefreshId) clearTimeout(_rsRefreshId);
     const ms = rsMarketStatus();
-    // 장중: 3분, 장외: 갱신 안함 (다음 장 시작 체크만 30분)
+    // 장중: 3분 간격, 장외: 30분 간격 (장 시작 감지용)
     const delay = ms.anyOpen ? 180000 : 1800000;
     _rsRefreshId = setTimeout(async () => {
       if (typeof TabGuard !== "undefined" && (!TabGuard.isLeader || !TabGuard.isVisible)) {
@@ -722,10 +750,9 @@ async function startRSSentinel() {
       }
       const cur = rsMarketStatus();
       if (cur.anyOpen) {
-        // 장중: 데이터 갱신
+        // 열린 시장만 갱신 (_rsLoadAll 내부에서 장시간 체크)
         await _rsLoadAll();
       }
-      // 장외→장중 전환 감지를 위해 항상 재스케줄
       _scheduleRefresh();
     }, delay);
   }
