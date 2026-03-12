@@ -1,0 +1,42 @@
+{
+  "updated": "2026-03-11",
+  "rate": 1485.29,
+  "cash": {
+    "rp": 50000,
+    "usd": 30000,
+    "krw": 100000000
+  },
+  "portfolios": {
+    "index": [
+      { "name": "NQ100",       "ticker": "QQQM", "qty": 18,        "avg": 246.63 },
+      { "name": "S&P500",      "ticker": "SPYM", "qty": 102,       "avg": 80.59 },
+      { "name": "유럽지수",    "ticker": "VGK",  "qty": 23.023743, "avg": 87.47 },
+      { "name": "이머징마켓",  "ticker": "EEM",  "qty": 35.662661, "avg": 60.14 }
+    ],
+    "dividend": [
+      { "name": "슈왑배당ETF",   "ticker": "SCHD", "qty": 4170,  "avg": 23.99 },
+      { "name": "리얼티인컴",    "ticker": "O",    "qty": 1609,  "avg": 50.04 },
+      { "name": "미국20Y+",      "ticker": "TLT",  "qty": 556,   "avg": 90.01 },
+      { "name": "배당퀄리티ETF", "ticker": "DGRW", "qty": 36,    "avg": 91.86 }
+    ],
+    "growth": [
+      { "name": "TSMC",     "ticker": "TSM",  "qty": 50.319486, "avg": 199.12 },
+      { "name": "브로드컴",  "ticker": "AVGO", "qty": 30.23932,  "avg": 333.75 },
+      { "name": "엔비디아",  "ticker": "NVDA", "qty": 40.201837, "avg": 180.86 },
+      { "name": "구글",      "ticker": "GOOGL","qty": 20.482451, "avg": 287.67 },
+      { "name": "휴머노이드","ticker": "HUMN", "qty": 81,        "avg": 30.83 }
+    ],
+    "kr": [
+      { "name": "KWM SPMO",         "ticker": "0137V0", "qty": 650,  "avg": 9789 },
+      { "name": "ACE Big7+",        "ticker": "465580", "qty": 316,  "avg": 22394 },
+      { "name": "Kdx AI소프트10",   "ticker": "0041D0", "qty": 488,  "avg": 13737 },
+      { "name": "Kdx QDVO.A",       "ticker": "0144L0", "qty": 718,  "avg": 9724 },
+      { "name": "Kdx DIVO.A",       "ticker": "441640", "qty": 508,  "avg": 12756 },
+      { "name": "ACE DGRW+CCA",     "ticker": "0049M0", "qty": 555,  "avg": 11483 },
+      { "name": "Plus고배당주",      "ticker": "161510", "qty": 100,  "avg": 25295 },
+      { "name": "Kdx US30Y.A(H)",   "ticker": "484790", "qty": 1600, "avg": 8765 },
+      { "name": "TF NQ100.A",       "ticker": "426030", "qty": 248,  "avg": 36073 },
+      { "name": "TF NQ100+채권혼합","ticker": "0019K0", "qty": 375,  "avg": 11684 }
+    ]
+  }
+}

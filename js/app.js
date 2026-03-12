@@ -1,179 +1,135 @@
 /* ═══════════════════════════════════════════════════════
    app.js — 메인 대시보드 애플리케이션
-   JSONP 데이터 로딩 · 파싱 · 탭 시스템 · 렌더러
+   데이터: holdings.json(정적) + market.json(GitHub Actions)
+         + Finnhub(실시간, risk-sentinel.js)
 
    의존: config.js, utils.js, treemap.js, risk-sentinel.js
    ═══════════════════════════════════════════════════════ */
 
 // ── 전역 상태 ──
 let TICKER_MAP = { index: [], dividend: [], growth: [] };
-let RAW = {}, P = {}, activeTab = "overview", charts = {};
+let P = {}, activeTab = "overview", charts = {};
 
 // ── 모바일 감지 ──
 const _isMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 
 /* ═══════════════════════════════════════════════════════
-   JSONP — Google Sheets 데이터 로딩
+   데이터 로딩 — holdings.json + market.json
    ═══════════════════════════════════════════════════════ */
 
-function jsonp(sheet) {
-  return new Promise((res, rej) => {
-    const cb = `_c${Date.now()}${Math.random().toString(36).slice(2, 5)}`;
-    const t = setTimeout(() => { cl(); rej("timeout"); }, 15000);
-    const cl = () => { clearTimeout(t); delete window[cb]; document.getElementById(cb)?.remove(); };
-    window[cb] = r => { cl(); r?.status === "ok" && r?.table ? res(r.table) : rej(r?.status); };
-    const s = document.createElement("script");
-    s.id = cb;
-    s.src = `https://docs.google.com/spreadsheets/d/${SID}/gviz/tq?tqx=out:json;responseHandler:${cb}&sheet=${encodeURIComponent(sheet)}`;
-    s.onerror = () => { cl(); rej("err"); };
-    document.head.appendChild(s);
-  });
-}
-
-/** 캐시된 JSON(data/sheets.json)에서 데이터 로드 — 첫 로딩용 */
-async function loadFromCache() {
+/** holdings.json + market.json에서 데이터 로드 */
+async function loadFromData() {
   const badge = document.getElementById("statusBadge");
   const info = document.getElementById("loadInfo");
   badge.className = "bdg bdg-ld";
   badge.textContent = "LOADING";
 
   try {
-    const res = await fetch(`./data/sheets.json?t=${Date.now()}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const sheets = data.sheets || {};
-    let ok = 0;
-    for (const n of SHEETS) {
-      if (sheets[n]) { RAW[n] = sheets[n]; ok++; }
+    const [holdingsRes, marketRes] = await Promise.all([
+      fetch(`./data/holdings.json?t=${Date.now()}`),
+      fetch(`./data/market.json?t=${Date.now()}`),
+    ]);
+
+    if (!holdingsRes.ok) throw new Error(`Holdings: HTTP ${holdingsRes.status}`);
+    const holdings = await holdingsRes.json();
+
+    let market = { tickers: {} };
+    if (marketRes.ok) {
+      market = await marketRes.json();
     }
-    info.textContent = `${ok}/${SHEETS.length}`;
 
-    if (ok >= 3) {
-      const updated = data.updated ? new Date(data.updated) : null;
-      const age = updated ? Math.round((Date.now() - updated.getTime()) / 60000) : "?";
-      badge.className = "bdg bdg-ok";
-      badge.textContent = `CACHE · ${age}m ago`;
-      parseAll();
-      console.log(`[Cache] ${ok}/${SHEETS.length} sheets loaded (${age}m old)`);
-      return true;
-    }
-  } catch (e) {
-    console.warn("[Cache] Failed:", e.message);
-  }
-  return false;
-}
+    computeAll(holdings, market);
 
-/** Google Sheets에서 실시간 JSONP 로딩 */
-async function loadAllSheets() {
-  const badge = document.getElementById("statusBadge");
-  const info = document.getElementById("loadInfo");
-  badge.className = "bdg bdg-ld";
-  badge.textContent = "LOADING";
-
-  let ok = 0;
-  for (const n of SHEETS) {
-    try { RAW[n] = await jsonp(n); ok++; } catch (e) { console.warn(n, e); }
-    info.textContent = `${ok}/${SHEETS.length}`;
-  }
-
-  if (ok >= 3) {
+    const age = market.updated ? Math.round((Date.now() - new Date(market.updated).getTime()) / 60000) : "?";
+    const tCount = Object.keys(market.tickers).length;
     badge.className = "bdg bdg-ok";
-    badge.textContent = `LIVE · ${ok}/${SHEETS.length}`;
-    parseAll();
-  } else {
+    badge.textContent = `DATA · ${age}m ago`;
+    info.textContent = `${tCount} tickers`;
+
+    console.log(`[Data] holdings + market loaded (${tCount} tickers, ${age}m old)`);
+    return true;
+  } catch (e) {
+    console.warn("[Data] Failed:", e.message);
     badge.className = "bdg bdg-er";
     badge.textContent = "FAIL";
+    return false;
+  }
+}
+
+/** 데이터 갱신 (자동 새로고침용) */
+async function refreshMarketData() {
+  try {
+    const [holdingsRes, marketRes] = await Promise.all([
+      fetch(`./data/holdings.json?t=${Date.now()}`),
+      fetch(`./data/market.json?t=${Date.now()}`),
+    ]);
+    if (!holdingsRes.ok) return;
+    const holdings = await holdingsRes.json();
+    let market = { tickers: {} };
+    if (marketRes.ok) market = await marketRes.json();
+    computeAll(holdings, market);
+  } catch (e) {
+    console.warn("[Refresh] Failed:", e.message);
   }
 }
 
 
 /* ═══════════════════════════════════════════════════════
-   데이터 파싱
+   데이터 계산 — holdings + market → P (전역 상태)
    ═══════════════════════════════════════════════════════ */
 
-function parseAll() {
-  const tb = RAW["TotalBoard"], ds = RAW["데이터시트"], kr_raw = RAW["국내 포트폴리오"];
+/** 종목 배열 빌드: holdings 정적 데이터 + market 시세 데이터 병합 */
+function buildPort(items, mk, isKR) {
+  return (items || []).map(h => {
+    const d = mk[h.ticker] || {};
+    const cur = d.price || h.avg;
+    const inv = h.qty * h.avg;
+    const val = h.qty * cur;
+    const pl = val - inv;
+    const plp = inv > 0 ? pl / inv * 100 : 0;
+    const daily = d.changePct || 0;
+    const divY = d.divYield || 0;
+    return {
+      name: h.name, ticker: h.ticker, qty: h.qty, avg: h.avg, cur,
+      daily, inv, val, pl, plp, divY,
+      rsi: d.rsi || 0, mdd: d.mdd || 0,
+      bb20: d.bb20 || 0, bb252: d.bb252 || 0,
+      target: "",
+    };
+  });
+}
+
+/** 전체 포트폴리오 계산 */
+function computeAll(holdings, market) {
+  const mk = market.tickers || {};
 
   // 환율
-  P.rate = 1440;
-  if (ds) { const r = Vn(ds, 0, 4); if (r > 1000 && r < 2000) P.rate = r; }
-  if (kr_raw) {
-    for (let i = kr_raw.rows.length - 1; i >= 0; i--) {
-      if (Vs(kr_raw, i, 3) === "환율") { const r = Vn(kr_raw, i, 4); if (r > 1000) P.rate = r; break; }
-    }
-  }
-
-  // TotalBoard 요약
-  P.tb = {};
-  if (tb) {
-    for (let i = 0; i < Math.min(tb.rows.length, 5); i++) {
-      const nm = Vs(tb, i, 0);
-      if (["지수형", "배당", "성장", "Total"].includes(nm))
-        P.tb[nm] = { inv: Vn(tb, i, 1), val: Vn(tb, i, 2), plp: Vn(tb, i, 3) * 100 };
-    }
-    P.tb["국내"] = { inv: Vn(tb, 0, 7), val: Vn(tb, 0, 8), plp: Vn(tb, 0, 9) * 100 };
-  }
-
-  // 포트폴리오 파싱
-  const stdCols = { name: 1, ticker: 2, qty: 3, avg: 4, cur: 5, daily: 6, inv: 7, val: 8, pl: 9, plp: 10, divY: 11, bb20: 12, bb252: 13, rsi: 14, mdd: 15, target: 16 };
-  P.index = parsePort("지수형 포트폴리오", stdCols);
-  P.dividend = parsePort("배당 포트폴리오", stdCols);
-  P.growth = parsePort("성장 포트폴리오", stdCols);
-  P.kr = parsePort("국내 포트폴리오", { name: 1, ticker: 3, qty: 4, avg: 5, cur: 6, daily: 7, inv: 8, val: 9, pl: 10, plp: 11, divY: 12, bb20: 13, bb252: 14, rsi: 15, mdd: 16, target: 17 });
+  P.rate = holdings.rate || 1450;
 
   // 현금
-  P.cash = { rp: 0, usd: 0, krw: 0 };
-  const dv = RAW["배당 포트폴리오"];
-  if (dv) {
-    for (let i = 0; i < dv.rows.length; i++) {
-      const n = Vs(dv, i, 1);
-      if (n === "삼성RP") P.cash.rp = parseFloat(Vf(dv, i, 2).replace(/[$,]/g, "")) || 0;
-      if (n === "예수금") { P.cash.usd = parseFloat(Vf(dv, i, 2).replace(/[$,]/g, "")) || 0; P.cash.krw = Vn(dv, i, 3); }
-    }
-  }
+  P.cash = holdings.cash || { rp: 0, usd: 0, krw: 0 };
 
-  // 데이터시트2 파싱: 티커별 가격 히스토리
+  // 포트폴리오 빌드
+  P.index = buildPort(holdings.portfolios?.index, mk, false);
+  P.dividend = buildPort(holdings.portfolios?.dividend, mk, false);
+  P.growth = buildPort(holdings.portfolios?.growth, mk, false);
+  P.kr = buildPort(holdings.portfolios?.kr, mk, true);
+
+  // 티커 히스토리 (market.json에서 가져온 60일 히스토리)
   P.tickerHistory = {};
-  const ds2 = RAW["데이터시트2"];
-  if (ds2) {
-    const cols = ds2.cols || [];
-    const rows = ds2.rows || [];
-
-    // 컬럼 스캔: (Date컬럼, Close컬럼) 쌍 자동 감지
-    const pairs = [];
-    for (let ci = 0; ci < cols.length - 1; ci += 2) {
-      const label = (cols[ci].label || "").trim();
-      const type = cols[ci].type;
-      if (type === "datetime" || type === "date" || label.includes("Date")) {
-        const ticker = label.replace(/\s*Date\s*/i, "").trim().toUpperCase();
-        if (ticker) pairs.push({ ticker, dateCol: ci, priceCol: ci + 1 });
-      }
+  for (const [ticker, data] of Object.entries(mk)) {
+    if (data.history?.length > 1) {
+      P.tickerHistory[ticker] = data.history;
     }
-
-    // 각 티커별 시계열 추출
-    pairs.forEach(pair => {
-      const history = [];
-      for (let ri = 0; ri < rows.length; ri++) {
-        const dateStr = Vf(ds2, ri, pair.dateCol);
-        const price = Vn(ds2, ri, pair.priceCol);
-        if (!dateStr || price === 0) continue;
-        let short = dateStr.replace(/\s*오[전후]\s*\d+:\d+:\d+/g, "").trim();
-        if (short.length > 12) short = short.slice(0, 12);
-        history.push({ d: short, p: price });
-      }
-      if (history.length > 1) P.tickerHistory[pair.ticker] = history;
-    });
-
-    // 포트폴리오 티커와 데이터시트2 티커를 자동 매칭
-    const ds2Tickers = new Set(Object.keys(P.tickerHistory));
-    TICKER_MAP.index = P.index.map(h => h.ticker.toUpperCase()).filter(t => ds2Tickers.has(t));
-    TICKER_MAP.dividend = P.dividend.map(h => h.ticker.toUpperCase()).filter(t => ds2Tickers.has(t));
-    TICKER_MAP.growth = P.growth.map(h => h.ticker.toUpperCase()).filter(t => ds2Tickers.has(t));
-
-    console.log("데이터시트2 종목:", [...ds2Tickers].join(", "));
-    console.log("TICKER_MAP 자동 구성:", JSON.stringify(TICKER_MAP));
   }
+
+  // TICKER_MAP (차트 렌더용)
+  const histTickers = new Set(Object.keys(P.tickerHistory));
+  TICKER_MAP.index = P.index.map(h => h.ticker.toUpperCase()).filter(t => histTickers.has(t));
+  TICKER_MAP.dividend = P.dividend.map(h => h.ticker.toUpperCase()).filter(t => histTickers.has(t));
+  TICKER_MAP.growth = P.growth.map(h => h.ticker.toUpperCase()).filter(t => histTickers.has(t));
+  console.log("TICKER_MAP:", JSON.stringify(TICKER_MAP));
 
   // 포트폴리오별 합계
   const sum = (a, k) => a.reduce((s, h) => s + (h[k] || 0), 0);
@@ -185,34 +141,22 @@ function parseAll() {
   P.cashAll = P.cash.rp + P.cash.usd;
   P.grand = P.usdAll + P.krT.val / P.rate + P.cashAll;
 
+  // TotalBoard (렌더링 호환용)
+  const rp = t => t.inv > 0 ? ((t.val - t.inv) / t.inv * 100) : 0;
+  P.tb = {
+    "지수형": { inv: P.idxT.inv, val: P.idxT.val, plp: rp(P.idxT) },
+    "배당":   { inv: P.divT.inv, val: P.divT.val, plp: rp(P.divT) },
+    "성장":   { inv: P.groT.inv, val: P.groT.val, plp: rp(P.groT) },
+    "Total":  { inv: P.idxT.inv + P.divT.inv + P.groT.inv, val: P.usdAll, plp: rp({ inv: P.idxT.inv + P.divT.inv + P.groT.inv, val: P.usdAll }) },
+    "국내":   { inv: P.krT.inv, val: P.krT.val, plp: rp(P.krT) },
+  };
+
   // UI 업데이트
   document.getElementById("rateDisp").textContent = `₩${P.rate.toLocaleString()}/USD`;
   document.getElementById("grandTotal").textContent = fU(Math.round(P.grand));
   renderTabs();
   switchTab(activeTab);
   setTimeout(startRSSentinel, 200);
-}
-
-function parsePort(sheetName, cols) {
-  const t = RAW[sheetName];
-  if (!t) return [];
-  const items = [];
-  for (let i = 0; i < t.rows.length; i++) {
-    const name = Vs(t, i, cols.name);
-    if (!name || name === "현금" || name.includes("관심") || name.includes("Total")) continue;
-    if (!V(t, i, cols.name)) continue;
-    const h = {
-      name, ticker: Vs(t, i, cols.ticker), qty: Vn(t, i, cols.qty), avg: Vn(t, i, cols.avg), cur: Vn(t, i, cols.cur),
-      daily: p100(Vn(t, i, cols.daily)), inv: Vn(t, i, cols.inv), val: Vn(t, i, cols.val), pl: Vn(t, i, cols.pl),
-      plp: p100(Vn(t, i, cols.plp)), divY: p100(Vn(t, i, cols.divY)),
-      rsi: cols.rsi != null ? Vn(t, i, cols.rsi) : 0, mdd: p100(Vn(t, i, cols.mdd)),
-      target: cols.target != null ? Vf(t, i, cols.target) : "",
-      bb20: cols.bb20 != null ? Vn(t, i, cols.bb20) : 0, bb252: cols.bb252 != null ? Vn(t, i, cols.bb252) : 0,
-    };
-    if (h.val === 0 && h.inv === 0 && h.qty === 0) continue;
-    items.push(h);
-  }
-  return items;
 }
 
 
@@ -267,19 +211,20 @@ function openStock(ticker, market, name, stype) {
       overlay = document.createElement("div");
       overlay.id = "stockModal";
       overlay.style.cssText = "position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column";
-      const bar = document.createElement("div");
-      bar.style.cssText = "display:flex;align-items:center;padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--bdr);flex-shrink:0";
-      bar.innerHTML = '<button onclick="closeStockModal(true)" style="background:none;border:1px solid var(--bdr);color:var(--txt);padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">← 돌아가기</button><span style="margin-left:12px;font-size:14px;font-weight:800;color:var(--txt)">' + name + '</span>';
-      const frame = document.createElement("iframe");
-      frame.id = "stockFrame";
-      frame.style.cssText = "flex:1;border:none;width:100%";
-      overlay.appendChild(bar);
-      overlay.appendChild(frame);
       document.body.appendChild(overlay);
     }
+    // 매번 내부를 재생성 (이전 iframe 잔재 방지)
+    overlay.innerHTML = '';
+    const bar = document.createElement("div");
+    bar.style.cssText = "display:flex;align-items:center;padding:8px 12px;background:var(--s1);border-bottom:1px solid var(--bdr);flex-shrink:0";
+    bar.innerHTML = '<button onclick="closeStockModal(true)" style="background:none;border:1px solid var(--bdr);color:var(--txt);padding:6px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">← 돌아가기</button><span style="margin-left:12px;font-size:14px;font-weight:800;color:var(--txt)">' + name + '</span>';
+    const frame = document.createElement("iframe");
+    frame.id = "stockFrame";
+    frame.style.cssText = "flex:1;border:none;width:100%";
+    overlay.appendChild(bar);
+    overlay.appendChild(frame);
     overlay.style.display = "flex";
-    overlay.querySelector("span").textContent = name;
-    document.getElementById("stockFrame").src = url;
+    frame.src = url;
     document.body.style.overflow = "hidden";
     history.pushState({ modal: true }, "");
   } else {
@@ -291,8 +236,14 @@ function openStock(ticker, market, name, stype) {
 function closeStockModal(fromBtn) {
   const m = document.getElementById("stockModal");
   if (m && m.style.display === "flex") {
+    // iframe 완전 해제 (메모리 누수 방지)
+    const frame = document.getElementById("stockFrame");
+    if (frame) {
+      try { frame.contentWindow?.stop?.(); } catch {}
+      frame.src = "about:blank";
+      frame.remove();
+    }
     m.style.display = "none";
-    document.getElementById("stockFrame").src = "";
     document.body.style.overflow = "";
     if (fromBtn) history.back();
   }
@@ -1359,23 +1310,33 @@ function _isKRMarketOpen() {
 
 let _countdown = REFRESH_SEC;
 let _resizeTimer;
+let _autoRefreshTimer = null;
 
 function startAutoRefresh() {
-  setInterval(() => {
+  stopAutoRefresh();
+  _autoRefreshTimer = setInterval(() => {
+    // 비활성 탭이면 카운트다운만 (fetch 안 함)
+    if (!TabGuard.isVisible) return;
     _countdown--;
     const m = Math.floor(_countdown / 60), s = _countdown % 60;
     const el = document.getElementById("refreshTimer");
     if (el) el.textContent = `${m}:${String(s).padStart(2, "0")}`;
     if (_countdown <= 0) {
       _countdown = REFRESH_SEC;
-      loadAllSheets();
+      // 리더 탭만 실제 데이터 fetch (holdings.json + market.json)
+      if (TabGuard.isLeader) refreshMarketData();
     }
   }, 1000);
+}
+
+function stopAutoRefresh() {
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
 }
 
 window.addEventListener("resize", () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
+    if (!TabGuard.isVisible) return; // 비활성 탭이면 리사이즈 무시
     Object.values(charts).forEach(c => c.resize());
     if (activeTab === "overview") {
       if (P._tmUSD?.length) renderTreemap("tmUSD", P._tmUSD, fU);
@@ -1385,19 +1346,34 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("DOMContentLoaded", async () => {
-  // 1) 캐시된 JSON으로 빠른 첫 로딩
-  const cached = await loadFromCache();
-  if (!cached) {
-    // 캐시 실패 시 구글시트에서 직접 로딩
-    await loadAllSheets();
-  }
-  // 2) 이후 10분 간격으로 구글시트에서 실시간 데이터 갱신
+  // TabGuard 초기화 — 멀티탭 리소스 충돌 방지
+  TabGuard.init({
+    onBecomeLeader: () => {
+      console.log("[App] 리더 탭 → 데이터 fetch 시작");
+      if (P.index) { _countdown = REFRESH_SEC; refreshMarketData(); }
+    },
+    onLoseLeader: () => {
+      console.log("[App] 리더 양보 → fetch 일시 중단");
+    },
+    onVisibilityChange: (visible) => {
+      if (visible) {
+        if (activeTab) switchTab(activeTab);
+      } else {
+        _stopUSTabRefresh();
+        _stopKRTabRefresh();
+      }
+    }
+  });
+
+  // 1) holdings.json + market.json 로드
+  await loadFromData();
+  // 2) 이후 10분 간격으로 market.json 갱신
   startAutoRefresh();
 });
 
 // ── Chrome 크래시 방지: SW 완전 초기화 + 캐시 전량 삭제 ──
 (async function _initSW() {
-  // 1) 기존 SW 전부 해제 (이전 버전이 캐시를 무한 축적하던 문제)
+  // 1) 기존 SW 전부 해제
   if ('serviceWorker' in navigator) {
     try {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -1407,7 +1383,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     } catch (e) { console.warn('[SW] 해제 실패:', e); }
   }
-  // 2) Cache Storage 전량 삭제 (이전 SW가 쌓아둔 외부 API 응답 포함)
+  // 2) Cache Storage 전량 삭제
   if ('caches' in window) {
     try {
       const keys = await caches.keys();
@@ -1417,8 +1393,13 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     } catch (e) { console.warn('[Cache] 삭제 실패:', e); }
   }
-  // 3) 새 SW 등록
+  // 3) 새 SW 등록 (리더 탭만)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    // SW 등록은 지연 — TabGuard 초기화 후 리더만 등록
+    setTimeout(() => {
+      if (TabGuard.isLeader) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      }
+    }, 2000);
   }
 })();

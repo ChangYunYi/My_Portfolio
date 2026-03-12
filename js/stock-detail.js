@@ -63,7 +63,7 @@ function jsonp(sheetName, tqQuery) {
     const cb = "__cb" + (++_cbIdx) + "_" + Date.now();
     const timeout = setTimeout(function() { delete window[cb]; reject(new Error("timeout")); }, 15000);
     window[cb] = function(resp) {
-      clearTimeout(timeout); delete window[cb];
+      clearTimeout(timeout); delete window[cb]; s.remove();
       if (!resp || !resp.table) { reject(new Error("no data")); return; }
       const cols = resp.table.cols.map(function(c) { return c.label || c.id; });
       const rows = resp.table.rows.map(function(r) {
@@ -77,7 +77,7 @@ function jsonp(sheetName, tqQuery) {
     let url = "https://docs.google.com/spreadsheets/d/" + SID + "/gviz/tq?tqx=out:json;responseHandler:" + cb + "&sheet=" + encodeURIComponent(sheetName);
     if (tqQuery) url += "&tq=" + encodeURIComponent(tqQuery);
     s.src = url;
-    s.onerror = function() { clearTimeout(timeout); delete window[cb]; reject(new Error("load err")); };
+    s.onerror = function() { clearTimeout(timeout); delete window[cb]; s.remove(); reject(new Error("load err")); };
     document.head.appendChild(s);
   });
 }
@@ -560,6 +560,9 @@ function _mkRiskChart(closes, ind, bb, w, h) {
 }
 
 /** 리스크 탭 렌더링 */
+let _riskRetry = 0;
+const _RISK_MAX_RETRY = 5;
+
 async function loadRisk() {
   var el = document.getElementById("riskContent");
 
@@ -581,18 +584,30 @@ async function loadRisk() {
     } catch(e) { d = null; }
   }
 
-  // 3. 데이터 없으면 대기 후 재시도
+  // 3. 데이터 없으면 대기 후 재시도 (최대 5회)
   if (!d || (!d.loaded && !d.loading)) {
-    el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--amber);font-size:12px">📡 리스크 데이터 로딩 중...<br><span style="font-size:10px;color:var(--mute)">백그라운드에서 분석이 진행됩니다. 잠시 후 자동 재시도합니다.</span></div>';
-    setTimeout(function() { _rL = 0; loadRisk(); }, 4000);
+    if (_riskRetry < _RISK_MAX_RETRY) {
+      _riskRetry++;
+      el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--amber);font-size:12px">📡 리스크 데이터 로딩 중... (' + _riskRetry + '/' + _RISK_MAX_RETRY + ')<br><span style="font-size:10px;color:var(--mute)">백그라운드에서 분석이 진행됩니다.</span></div>';
+      setTimeout(function() { _rL = 0; loadRisk(); }, 4000);
+    } else {
+      el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--mute);font-size:12px">리스크 데이터를 불러올 수 없습니다.<br><span style="font-size:10px">메인 대시보드에서 데이터 로딩 후 다시 시도해주세요.</span></div>';
+    }
     return;
   }
 
   if (d.loading) {
-    el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--amber);font-size:12px"><span class="rs-dot-load"></span> 분석중...</div>';
-    setTimeout(function() { _rL = 0; loadRisk(); }, 3000);
+    if (_riskRetry < _RISK_MAX_RETRY) {
+      _riskRetry++;
+      el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--amber);font-size:12px"><span class="rs-dot-load"></span> 분석중... (' + _riskRetry + '/' + _RISK_MAX_RETRY + ')</div>';
+      setTimeout(function() { _rL = 0; loadRisk(); }, 3000);
+    } else {
+      el.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--mute);font-size:12px">분석 시간이 초과되었습니다.<br><span style="font-size:10px">메인 대시보드에서 다시 시도해주세요.</span></div>';
+    }
     return;
   }
+
+  _riskRetry = 0; // 성공 시 카운터 리셋
 
   var price = d.price;
   var up = (d.changePct || 0) >= 0;
