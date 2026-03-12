@@ -527,10 +527,17 @@ async function rsProcessOne(mkt, portTicker, isKR) {
     if (isKR) {
       let q;
       if (kisAvail) q = await KIS.getQuote(portTicker);
-      if (!q || !(q.c > 0)) q = await rsKRQuote(fetchTicker);
+      if (q?.c > 0) {
+        console.log("[RS] " + portTicker + " 시세: KIS ✓ " + q.c.toLocaleString("ko-KR") + "원");
+      } else {
+        q = await rsKRQuote(fetchTicker);
+        if (q?.c > 0) console.log("[RS] " + portTicker + " 시세: Yahoo 폴백 ✓ " + q.c.toLocaleString("ko-KR") + "원");
+      }
       return q;
     }
-    return rsUSQuote(portTicker);
+    const uq = await rsUSQuote(portTicker);
+    if (uq?.c > 0) console.log("[RS] " + portTicker + " 시세: " + (uq._source === "finnhub" ? "Finnhub" : "Yahoo") + " ✓ $" + uq.c.toFixed(2));
+    return uq;
   })();
 
   // KR: KIS 일봉 우선, 실패 시 Yahoo 폴백 / US: Yahoo
@@ -538,16 +545,27 @@ async function rsProcessOne(mkt, portTicker, isKR) {
     if (isKR) {
       if (kisAvail) {
         const kc = await KIS.getDailyChart(portTicker);
-        if (kc?.closes?.length > 20) return kc;
+        if (kc?.closes?.length > 20) {
+          console.log("[RS] " + portTicker + " 차트: KIS ✓ " + kc.closes.length + "일");
+          return kc;
+        }
       }
-      return rsKRCandles(fetchTicker);
+      const yc = await rsKRCandles(fetchTicker);
+      if (yc?.closes?.length > 0) console.log("[RS] " + portTicker + " 차트: Yahoo 폴백 ✓ " + yc.closes.length + "일");
+      return yc;
     }
-    return rsUSCandles(fetchTicker);
+    const uc = await rsUSCandles(portTicker);
+    if (uc?.closes?.length > 0) console.log("[RS] " + portTicker + " 차트: Yahoo ✓ " + uc.closes.length + "일");
+    return uc;
   })();
 
   const [q, candleResult] = await Promise.all([quoteP, candleP]);
 
-  if (!q || !(q.c > 0)) { store.data[portTicker] = { loading: false, error: true }; return; }
+  if (!q || !(q.c > 0)) {
+    console.warn("[RS] " + portTicker + " 시세 조회 실패 ✗");
+    store.data[portTicker] = { loading: false, error: true };
+    return;
+  }
 
   const pr = q.c, prevClose = q.pc || 0;
   const cl = candleResult?.closes;
@@ -690,6 +708,9 @@ async function startRSSentinel() {
   };
   const restoredUS = _restoreAndTrim(cachedUS, "rsUS", RS_US);
   const restoredKR = _restoreAndTrim(cachedKR, "rsKR", RS_KR);
+  if (restoredUS > 0 || restoredKR > 0) {
+    console.log("[RS] 캐시 복원 — US: " + restoredUS + "건, KR: " + restoredKR + "건");
+  }
 
   // 캐시 복원 시 즉시 UI 반영
   if (restoredUS > 0) {
