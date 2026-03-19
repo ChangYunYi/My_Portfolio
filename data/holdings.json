@@ -1,6 +1,6 @@
 {
-  "updated": "2026-03-18",
-  "rate": 1511.76,
+  "updated": "2026-03-19",
+  "rate": 1489.71,
   "cash": {
     "rp": 50000,
     "usd": 30000,
@@ -95,44 +95,44 @@
       {
         "name": "KWM SPMO",
         "ticker": "0137V0",
-        "qty": 683,
+        "qty": 749,
         "avg": 9788
       },
       {
         "name": "ACE Big7+",
         "ticker": "465580",
-        "qty": 331,
-        "avg": 22371
+        "qty": 361,
+        "avg": 22333
       },
       {
         "name": "Kdx AI소프트10",
         "ticker": "0041D0",
-        "qty": 533,
-        "avg": 13636
+        "qty": 623,
+        "avg": 13471
       },
       {
         "name": "Kdx QDVO.A",
         "ticker": "0144L0",
-        "qty": 751,
-        "avg": 9709
+        "qty": 817,
+        "avg": 9690
       },
       {
         "name": "Kdx DIVO.A",
         "ticker": "441640",
-        "qty": 532,
-        "avg": 12763
+        "qty": 580,
+        "avg": 12766
       },
       {
         "name": "ACE DGRW+CCA",
         "ticker": "0049M0",
-        "qty": 582,
-        "avg": 11483
+        "qty": 636,
+        "avg": 11488
       },
       {
         "name": "Plus고배당주",
         "ticker": "161510",
-        "qty": 180,
-        "avg": 25413
+        "qty": 280,
+        "avg": 25619
       },
       {
         "name": "Kdx US30Y.A(H)",
@@ -143,14 +143,14 @@
       {
         "name": "TF NQ100.A",
         "ticker": "426030",
-        "qty": 267,
-        "avg": 36012
+        "qty": 282,
+        "avg": 36146
       },
       {
         "name": "TF NQ100+채권혼합",
         "ticker": "0019K0",
-        "qty": 390,
-        "avg": 11682
+        "qty": 415,
+        "avg": 11697
       }
     ]
   }
