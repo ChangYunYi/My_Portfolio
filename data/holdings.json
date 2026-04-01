@@ -1,6 +1,6 @@
 {
-  "updated": "2026-03-31",
-  "rate": 1504.19,
+  "updated": "2026-04-01",
+  "rate": 1513.24,
   "cash": {
     "rp": 50000,
     "usd": 30000,
@@ -11,26 +11,26 @@
       {
         "name": "NQ100",
         "ticker": "QQQM",
-        "qty": 22,
-        "avg": 246.5314
+        "qty": 28,
+        "avg": 245.8632
       },
       {
         "name": "S&P500",
         "ticker": "SPYM",
-        "qty": 110,
-        "avg": 80.4459
+        "qty": 134,
+        "avg": 79.8798
       },
       {
         "name": "유럽지수",
         "ticker": "VGK",
-        "qty": 26.60593,
-        "avg": 86.97
+        "qty": 34.610997,
+        "avg": 85.63
       },
       {
         "name": "이머징마켓",
         "ticker": "EEM",
-        "qty": 40.841037,
-        "avg": 59.86
+        "qty": 52.309365,
+        "avg": 59.16
       }
     ],
     "dividend": [
@@ -55,78 +55,84 @@
       {
         "name": "배당퀄리티ETF",
         "ticker": "DGRW",
-        "qty": 49,
-        "avg": 91.3217
+        "qty": 76,
+        "avg": 90.21
       }
     ],
     "growth": [
       {
         "name": "TSMC",
         "ticker": "TSM",
-        "qty": 50.450369,
-        "avg": 199.5
+        "qty": 50.583458,
+        "avg": 199.86
       },
       {
         "name": "브로드컴",
         "ticker": "AVGO",
-        "qty": 30.541856,
-        "avg": 333.72
+        "qty": 31.740055,
+        "avg": 332.94
       },
       {
         "name": "엔비디아",
         "ticker": "NVDA",
-        "qty": 42.395311,
-        "avg": 180.94
+        "qty": 47.09554,
+        "avg": 180.55
+      },
+      {
+        "name": "반에크반도체ETF",
+        "ticker": "SMH",
+        "qty": 2,
+        "avg": 371.49
       },
       {
         "name": "구글",
         "ticker": "GOOGL",
-        "qty": 21.4668,
-        "avg": 288.46
+        "qty": 24.67263,
+        "avg": 289.3
       },
       {
         "name": "휴머노이드",
         "ticker": "HUMN",
-        "qty": 87,
-        "avg": 30.8373
+        "qty": 99,
+        "avg": 30.6416
       }
     ],
     "kr": [
       {
         "name": "KWM SPMO",
         "ticker": "0137V0",
-        "qty": 759,
-        "avg": 9786
+        "qty": 836,
+        "avg": 9766
       },
       {
         "name": "ACE Big7+",
         "ticker": "465580",
-        "qty": 366,
-        "avg": 22323
+        "qty": 401,
+        "avg": 22211
       },
       {
         "name": "Kdx AI소프트10",
         "ticker": "0041D0",
-        "qty": 633,
-        "avg": 13456
+        "qty": 703,
+        "avg": 13304
       },
       {
         "name": "Kdx QDVO.A",
         "ticker": "0144L0",
-        "qty": 827,
-        "avg": 9686
+        "qty": 915,
+        "avg": 9641
       },
       {
         "name": "Kdx DIVO.A",
         "ticker": "441640",
-        "qty": 590,
-        "avg": 12765
+        "qty": 660,
+        "avg": 12756
       },
       {
         "name": "ACE DGRW+CCA",
         "ticker": "0049M0",
-        "qty": 646,
-        "avg": 11488
+        "qty": 716,
+        "avg": 11476
       },
       {
         "name": "Plus고배당주",
@@ -137,20 +143,32 @@
       {
         "name": "Kdx US30Y.A(H)",
         "ticker": "484790",
-        "qty": 1400,
+        "qty": 1200,
         "avg": 8765
       },
       {
         "name": "TF NQ100.A",
         "ticker": "426030",
-        "qty": 285,
-        "avg": 36191
+        "qty": 309,
+        "avg": 36322
       },
       {
         "name": "TF NQ100+채권혼합",
         "ticker": "0019K0",
-        "qty": 420,
-        "avg": 11703
+        "qty": 460,
+        "avg": 11720
+      },
+      {
+        "name": "KDX 200",
+        "ticker": "069500",
+        "qty": 191,
+        "avg": 78762
+      },
+      {
+        "name": "KDX 200위클리커버드콜",
+        "ticker": "498400",
+        "qty": 906,
+        "avg": 16473
       }
     ]
   }
