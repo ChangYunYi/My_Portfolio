@@ -1,6 +1,7 @@
 {
-  "updated": "2026-05-30T15:39:42.739Z",
+  "updated": "2026-05-30T16:40:08.347Z",
   "series": {
+    "CPIAUCSL": null,
     "DGS2": {
       "value": 3.99,
       "date": "2026-05-28",
@@ -249,21 +250,20 @@
         }
       ]
     },
-    "WM2NS": null,
     "T10Y2Y": null,
+    "WM2NS": null,
+    "BAMLH0A0HYM2": null,
+    "UNRATE": null,
+    "SP500": null,
+    "DTWEXBGS": null,
     "DFEDTARU": null,
+    "DFII10": null,
     "UMCSENT": null,
     "MPMISM": null,
-    "DFII10": null,
-    "UNRATE": null,
-    "CPIAUCSL": null,
-    "GOLDAMGBD228NLBM": null,
-    "DTWEXBGS": null,
-    "VIXCLS": null,
     "TEDRATE": null,
+    "VIXCLS": null,
     "BAMLC0A4CBBB": null,
     "DCOILWTICO": null,
-    "SP500": null,
-    "BAMLH0A0HYM2": null
+    "GOLDAMGBD228NLBM": null
   }
 }
