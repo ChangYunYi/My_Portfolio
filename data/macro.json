@@ -1,6 +1,14 @@
 {
-  "updated": "2026-05-30T17:44:05.684Z",
+  "updated": "2026-05-30T18:48:23.739Z",
   "series": {
+    "UMCSENT": null,
+    "DGS10": null,
+    "WM2NS": null,
+    "MPMISM": null,
+    "SP500": null,
+    "T10Y2Y": null,
+    "CPIAUCSL": null,
+    "BAMLC0A4CBBB": null,
     "DGS2": {
       "value": 3.99,
       "date": "2026-05-28",
@@ -125,7 +133,7 @@
         }
       ]
     },
-    "MPMISM": null,
+    "DTWEXBGS": null,
     "DFEDTARU": {
       "value": 3.75,
       "date": "2026-05-29",
@@ -254,20 +262,12 @@
         }
       ]
     },
-    "UNRATE": null,
-    "DGS10": null,
-    "DFII10": null,
-    "UMCSENT": null,
-    "BAMLC0A4CBBB": null,
-    "T10Y2Y": null,
-    "SP500": null,
-    "WM2NS": null,
     "BAMLH0A0HYM2": null,
-    "CPIAUCSL": null,
-    "DCOILWTICO": null,
-    "DTWEXBGS": null,
     "GOLDAMGBD228NLBM": null,
+    "UNRATE": null,
     "TEDRATE": null,
-    "VIXCLS": null
+    "DCOILWTICO": null,
+    "VIXCLS": null,
+    "DFII10": null
   }
 }
