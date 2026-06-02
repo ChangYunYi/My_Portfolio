@@ -1,7 +1,8 @@
 {
-  "updated": "2026-06-02T21:58:46.250Z",
+  "updated": "2026-06-02T23:46:10.709Z",
   "series": {
-    "UNRATE": null,
+    "DFII10": null,
+    "WM2NS": null,
     "DGS10": {
       "value": 4.47,
       "date": "2026-06-01",
@@ -126,6 +127,10 @@
         }
       ]
     },
+    "DFEDTARU": null,
+    "CPIAUCSL": null,
+    "T10Y2Y": null,
+    "UNRATE": null,
     "DGS2": {
       "value": 4.05,
       "date": "2026-06-01",
@@ -250,20 +255,15 @@
         }
       ]
     },
-    "CPIAUCSL": null,
-    "DFEDTARU": null,
-    "SP500": null,
-    "BAMLC0A4CBBB": null,
-    "T10Y2Y": null,
-    "MPMISM": null,
     "VIXCLS": null,
-    "BAMLH0A0HYM2": null,
-    "TEDRATE": null,
-    "WM2NS": null,
-    "UMCSENT": null,
     "GOLDAMGBD228NLBM": null,
+    "SP500": null,
+    "MPMISM": null,
     "DTWEXBGS": null,
-    "DFII10": null,
-    "DCOILWTICO": null
+    "DCOILWTICO": null,
+    "BAMLC0A4CBBB": null,
+    "TEDRATE": null,
+    "UMCSENT": null,
+    "BAMLH0A0HYM2": null
   }
 }
